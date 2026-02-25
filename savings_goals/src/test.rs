@@ -1471,3 +1471,107 @@ fn test_time_drift_large_jump_marks_missed_count() {
         "next_due must have advanced past all skipped intervals"
     );
 }
+
+#[test]
+fn test_get_all_goals_filters_by_owner() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, SavingsGoalContract);
+    let client = SavingsGoalContractClient::new(&env, &contract_id);
+
+    client.init();
+    env.mock_all_auths();
+
+    // Create two different owners
+    let owner_a = Address::generate(&env);
+    let owner_b = Address::generate(&env);
+
+    // Create goals for owner_a
+    let goal_a1 = client.create_goal(
+        &owner_a,
+        &String::from_str(&env, "Goal A1"),
+        &1000,
+        &1735689600,
+    );
+    let goal_a2 = client.create_goal(
+        &owner_a,
+        &String::from_str(&env, "Goal A2"),
+        &2000,
+        &1735689600,
+    );
+    let goal_a3 = client.create_goal(
+        &owner_a,
+        &String::from_str(&env, "Goal A3"),
+        &3000,
+        &1735689600,
+    );
+
+    // Create goals for owner_b
+    let goal_b1 = client.create_goal(
+        &owner_b,
+        &String::from_str(&env, "Goal B1"),
+        &5000,
+        &1735689600,
+    );
+    let goal_b2 = client.create_goal(
+        &owner_b,
+        &String::from_str(&env, "Goal B2"),
+        &6000,
+        &1735689600,
+    );
+
+    // Get all goals for owner_a
+    let goals_a = client.get_all_goals(&owner_a);
+    assert_eq!(goals_a.len(), 3, "Owner A should have exactly 3 goals");
+
+    // Verify all goals returned for owner_a belong to owner_a
+    for goal in goals_a.iter() {
+        assert_eq!(
+            goal.owner, owner_a,
+            "Goal {} should belong to owner_a",
+            goal.id
+        );
+    }
+
+    // Verify goal IDs for owner_a are correct
+    let goal_a_ids: Vec<u32> = goals_a.iter().map(|g| g.id).collect();
+    assert!(goal_a_ids.contains(&goal_a1), "Goals for A should contain goal_a1");
+    assert!(goal_a_ids.contains(&goal_a2), "Goals for A should contain goal_a2");
+    assert!(goal_a_ids.contains(&goal_a3), "Goals for A should contain goal_a3");
+
+    // Get all goals for owner_b
+    let goals_b = client.get_all_goals(&owner_b);
+    assert_eq!(goals_b.len(), 2, "Owner B should have exactly 2 goals");
+
+    // Verify all goals returned for owner_b belong to owner_b
+    for goal in goals_b.iter() {
+        assert_eq!(
+            goal.owner, owner_b,
+            "Goal {} should belong to owner_b",
+            goal.id
+        );
+    }
+
+    // Verify goal IDs for owner_b are correct
+    let goal_b_ids: Vec<u32> = goals_b.iter().map(|g| g.id).collect();
+    assert!(goal_b_ids.contains(&goal_b1), "Goals for B should contain goal_b1");
+    assert!(goal_b_ids.contains(&goal_b2), "Goals for B should contain goal_b2");
+
+    // Verify that goal IDs between owner_a and owner_b are disjoint
+    for goal_a_id in &goal_a_ids {
+        assert!(
+            !goal_b_ids.contains(goal_a_id),
+            "Goal ID {} from owner A should not appear in owner B's goals",
+            goal_a_id
+        );
+    }
+
+    // Verify owner_a's goals do not appear in owner_b's goals and vice versa
+    for goal_a_id in goal_a_ids {
+        for goal in goals_b.iter() {
+            assert_ne!(
+                goal.id, goal_a_id,
+                "Owner B's goal list should not contain owner A's goals"
+            );
+        }
+    }
+}
