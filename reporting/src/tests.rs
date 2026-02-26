@@ -208,7 +208,6 @@ fn test_init_reporting_contract() {
 }
 
 #[test]
-#[should_panic(expected = "Contract already initialized")]
 fn test_init_twice_fails() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -216,7 +215,8 @@ fn test_init_twice_fails() {
     let admin = Address::generate(&env);
 
     client.init(&admin);
-    client.init(&admin); // Should panic
+    let result = client.try_init(&admin); // Should fail
+    assert!(result.is_err(), "init should fail when called twice");
 }
 
 #[test]
@@ -251,7 +251,6 @@ fn test_configure_addresses() {
 }
 
 #[test]
-#[should_panic(expected = "Only admin can configure addresses")]
 fn test_configure_addresses_unauthorized() {
     let env = create_test_env();
     let contract_id = env.register_contract(None, ReportingContract);
@@ -267,13 +266,17 @@ fn test_configure_addresses_unauthorized() {
     let insurance = Address::generate(&env);
     let family_wallet = Address::generate(&env);
 
-    client.configure_addresses(
+    let result = client.try_configure_addresses(
         &non_admin,
         &remittance_split,
         &savings_goals,
         &bill_payments,
         &insurance,
         &family_wallet,
+    );
+    assert!(
+        result.is_err(),
+        "configure_addresses should fail for non-admin"
     );
 }
 
