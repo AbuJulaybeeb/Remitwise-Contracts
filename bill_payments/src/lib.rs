@@ -1360,11 +1360,7 @@ impl BillPayments {
             .get(&STORAGE_UNPAID_TOTALS)
             .unwrap_or_else(|| Map::new(env));
         let current = totals.get(owner.clone()).unwrap_or(0);
-        let next = if delta >= 0 {
-            current.saturating_add(delta)
-        } else {
-            current.saturating_sub(delta.saturating_abs())
-        };
+        let next = current.checked_add(delta).expect("overflow");
         totals.set(owner.clone(), next);
         env.storage()
             .instance()
@@ -2264,6 +2260,7 @@ mod test {
                     &(now - 1 - i as u64),
                     &false,
                     &0,
+                    &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2276,6 +2273,7 @@ mod test {
                     &(now + 1 + i as u64),
                     &false,
                     &0,
+                    &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2309,6 +2307,7 @@ mod test {
                     &(now + i as u64), // due_date >= now — strict less-than is required to be overdue
                     &false,
                     &0,
+                    &String::from_str(&env, "XLM"),
                 );
             }
 
@@ -2346,6 +2345,7 @@ mod test {
                 &base_due,
                 &true,
                 &freq_days,
+                &String::from_str(&env, "XLM"),
             );
 
             client.pay_bill(&owner, &bill_id);
@@ -2359,6 +2359,8 @@ mod test {
             );
             prop_assert!(!next_bill.paid, "next recurring bill must be unpaid");
         }
+    }
+
     /// Issue #102 – When pay_bill is called on a recurring bill, the contract
     /// creates the next occurrence.  This test asserts every cloned field
     /// individually so that a regression in the clone logic (e.g. paid left

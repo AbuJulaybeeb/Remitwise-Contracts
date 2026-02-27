@@ -158,43 +158,43 @@ fn test_get_total_unpaid_with_two_large_bills() {
     assert_eq!(total, amount + amount);
 }
 
-// #[test]
-// #[should_panic(expected = "overflow")]
-// fn test_get_total_unpaid_overflow_panics() {
-//     let env = Env::default();
-//     let contract_id = env.register_contract(None, BillPayments);
-//     let client = BillPaymentsClient::new(&env, &contract_id);
-//     let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
+#[test]
+#[should_panic(expected = "overflow")]
+fn test_get_total_unpaid_overflow_panics() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, BillPayments);
+    let client = BillPaymentsClient::new(&env, &contract_id);
+    let owner = <soroban_sdk::Address as AddressTrait>::generate(&env);
 
-//     env.mock_all_auths();
+    env.mock_all_auths();
 
-//     // Create two bills that will overflow when added
-//     let amount = i128::MAX / 2 + 1000;
+    // Create two bills that will overflow when added
+    let amount = i128::MAX / 2 + 1000;
 
-//     client.create_bill(
-//         &owner,
-//         &String::from_str(&env, "Bill1"),
-//         &amount,
-//         &1000000,
-//         &false,
-//         &0,
-//         &String::from_str(&env, "XLM"),
-//     );
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill1"),
+        &amount,
+        &1000000,
+        &false,
+        &0,
+        &String::from_str(&env, "XLM"),
+    );
 
-//     env.mock_all_auths();
-//     client.create_bill(
-//         &owner,
-//         &String::from_str(&env, "Bill2"),
-//         &amount,
-//         &1000000,
-//         &false,
-//         &0,
-//         &String::from_str(&env, "XLM"),
-//     );
+    env.mock_all_auths();
+    client.create_bill(
+        &owner,
+        &String::from_str(&env, "Bill2"),
+        &amount,
+        &1000000,
+        &false,
+        &0,
+        &String::from_str(&env, "XLM"),
+    );
 
-//     // This should panic due to overflow
-//     client.get_total_unpaid(&owner);
-// }
+    // This should panic due to overflow
+    client.get_total_unpaid(&owner);
+}
 
 #[test]
 fn test_multiple_large_bills_different_owners() {

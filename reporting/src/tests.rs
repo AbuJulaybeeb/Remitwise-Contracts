@@ -71,17 +71,15 @@ mod savings_goals {
 }
 
 mod bill_payments {
-    use crate::{Bill, BillPaymentsTrait};
-    use soroban_sdk::{
-        contract, contractimpl, testutils::Address as _, Address, Env, String as SorobanString, Vec,
-    };
+    use crate::{Bill, BillPage, BillPaymentsTrait};
+    use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
     pub struct BillPayments;
 
     #[contractimpl]
     impl BillPaymentsTrait for BillPayments {
-        fn get_unpaid_bills(_env: Env, _owner: Address) -> Vec<Bill> {
+        fn get_unpaid_bills(_env: Env, _owner: Address, _cursor: u32, _limit: u32) -> BillPage {
             let env = _env;
             let mut bills = Vec::new(&env);
             bills.push_back(Bill {
@@ -98,20 +96,28 @@ mod bill_payments {
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
-            bills
+            BillPage {
+                count: bills.len(),
+                items: bills,
+                next_cursor: 0,
+            }
         }
 
         fn get_total_unpaid(_env: Env, _owner: Address) -> i128 {
             100
         }
 
-        fn get_all_bills(_env: Env) -> Vec<Bill> {
+        fn get_all_bills_for_owner(
+            _env: Env,
+            _owner: Address,
+            _cursor: u32,
+            _limit: u32,
+        ) -> BillPage {
             let env = _env;
-            let owner = Address::generate(&env);
             let mut bills = Vec::new(&env);
             bills.push_back(Bill {
                 id: 1,
-                owner: owner.clone(),
+                owner: _owner.clone(),
                 name: SorobanString::from_str(&env, "Electricity"),
                 amount: 100,
                 due_date: 1735689600,
@@ -125,7 +131,7 @@ mod bill_payments {
             });
             bills.push_back(Bill {
                 id: 2,
-                owner,
+                owner: _owner,
                 name: SorobanString::from_str(&env, "Water"),
                 amount: 50,
                 due_date: 1735689600,
@@ -137,13 +143,17 @@ mod bill_payments {
                 schedule_id: None,
                 currency: SorobanString::from_str(&env, "XLM"),
             });
-            bills
+            BillPage {
+                count: bills.len(),
+                items: bills,
+                next_cursor: 0,
+            }
         }
     }
 }
 
 mod insurance {
-    use crate::{InsurancePolicy, InsuranceTrait};
+    use crate::{InsurancePolicy, InsuranceTrait, PolicyPage};
     use soroban_sdk::{contract, contractimpl, Address, Env, String as SorobanString, Vec};
 
     #[contract]
