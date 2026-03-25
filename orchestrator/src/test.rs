@@ -1,4 +1,4 @@
-use crate::{Orchestrator, OrchestratorClient, OrchestratorError};
+use crate::{ExecutionState, Orchestrator, OrchestratorClient, OrchestratorError};
 use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
 // ============================================================================
@@ -873,5 +873,496 @@ mod tests {
             success_result.is_ok(),
             "Second flow must succeed — prior rollback must not affect this transaction"
         );
+    }
+
+    // ========================================================================
+    // Reentrancy Guard Tests
+    // ========================================================================
+
+    #[test]
+    fn test_execution_state_starts_idle() {
+        let (env, orchestrator_id, _, _, _, _, _, _) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Initial execution state should be Idle
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_returns_to_idle_after_success() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            savings_id,
+            _bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute a successful savings deposit
+        let result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &1);
+        assert!(result.is_ok());
+
+        // State should be back to Idle after successful execution
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_returns_to_idle_after_failure() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            _bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute a savings deposit with amount exceeding limit (triggers error)
+        let result = client.try_execute_savings_deposit(
+            &user,
+            &15000,
+            &family_wallet_id,
+            &family_wallet_id, // wrong addr, doesn't matter - will fail on perm check
+            &1,
+        );
+        assert!(result.is_err());
+
+        // State should be back to Idle even after failed execution
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_idle_after_bill_payment_success() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1);
+        assert!(result.is_ok());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_idle_after_bill_payment_failure() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Invalid bill_id triggers failure
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &999);
+        assert!(result.is_err());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_idle_after_insurance_payment_success() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            _bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        let result = client.try_execute_insurance_payment(
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &1,
+        );
+        assert!(result.is_ok());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_idle_after_remittance_flow_success() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        let result = client.try_execute_remittance_flow(
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
+        );
+        assert!(result.is_ok());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_idle_after_remittance_flow_invalid_amount() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Zero amount triggers InvalidAmount error
+        let result = client.try_execute_remittance_flow(
+            &user,
+            &0,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::InvalidAmount
+        );
+
+        // State must be Idle even after early-return error path
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_state_idle_after_remittance_flow_permission_denied() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Amount exceeds limit -> PermissionDenied
+        let result = client.try_execute_remittance_flow(
+            &user,
+            &15000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
+        );
+        assert!(result.is_err());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_sequential_executions_succeed() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            savings_id,
+            bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // First execution: savings deposit
+        let result1 =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &1);
+        assert!(result1.is_ok());
+
+        // Second execution: bill payment (should succeed since lock was released)
+        let result2 =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1);
+        assert!(result2.is_ok());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_execution_after_failure_succeeds() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            savings_id,
+            _bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // First execution: fails (amount exceeds limit)
+        let result1 =
+            client.try_execute_savings_deposit(&user, &15000, &family_wallet_id, &savings_id, &1);
+        assert!(result1.is_err());
+
+        // Second execution: should succeed (lock was released after failure)
+        let result2 =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &1);
+        assert!(result2.is_ok());
+
+        let state = client.get_execution_state();
+        assert_eq!(state, ExecutionState::Idle);
+    }
+
+    #[test]
+    fn test_reentrancy_guard_direct_storage_manipulation() {
+        // Directly set execution state to Executing and verify guard rejects calls
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            savings_id,
+            _bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Manually set execution state to Executing via storage
+        // This simulates the state during an in-progress execution
+        env.as_contract(&orchestrator_id, || {
+            env.storage().instance().set(
+                &soroban_sdk::symbol_short!("EXEC_ST"),
+                &ExecutionState::Executing,
+            );
+        });
+
+        // Attempt to execute while lock is held should fail with ReentrancyDetected
+        let result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &1);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::ReentrancyDetected
+        );
+    }
+
+    #[test]
+    fn test_reentrancy_guard_blocks_bill_payment_during_execution() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            bills_id,
+            _insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Simulate in-progress execution
+        env.as_contract(&orchestrator_id, || {
+            env.storage().instance().set(
+                &soroban_sdk::symbol_short!("EXEC_ST"),
+                &ExecutionState::Executing,
+            );
+        });
+
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::ReentrancyDetected
+        );
+    }
+
+    #[test]
+    fn test_reentrancy_guard_blocks_insurance_payment_during_execution() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            _remittance_split_id,
+            _savings_id,
+            _bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Simulate in-progress execution
+        env.as_contract(&orchestrator_id, || {
+            env.storage().instance().set(
+                &soroban_sdk::symbol_short!("EXEC_ST"),
+                &ExecutionState::Executing,
+            );
+        });
+
+        let result = client.try_execute_insurance_payment(
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &1,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::ReentrancyDetected
+        );
+    }
+
+    #[test]
+    fn test_reentrancy_guard_blocks_remittance_flow_during_execution() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Simulate in-progress execution
+        env.as_contract(&orchestrator_id, || {
+            env.storage().instance().set(
+                &soroban_sdk::symbol_short!("EXEC_ST"),
+                &ExecutionState::Executing,
+            );
+        });
+
+        let result = client.try_execute_remittance_flow(
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
+        );
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().unwrap(),
+            OrchestratorError::ReentrancyDetected
+        );
+    }
+
+    #[test]
+    fn test_multiple_sequential_flows_all_succeed() {
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup_test_env();
+
+        let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+        // Execute three full remittance flows sequentially
+        for _ in 0..3 {
+            let result = client.try_execute_remittance_flow(
+                &user,
+                &10000,
+                &family_wallet_id,
+                &remittance_split_id,
+                &savings_id,
+                &bills_id,
+                &insurance_id,
+                &1,
+                &1,
+                &1,
+            );
+            assert!(result.is_ok());
+
+            let state = client.get_execution_state();
+            assert_eq!(state, ExecutionState::Idle);
+        }
     }
 }
