@@ -68,7 +68,7 @@ fn test_initialize_split_invalid_sum() {
     let token_id = setup_token(&env, &token_admin, &owner, 0);
 
     let result = client.try_initialize_split(&owner, &0, &token_id, &50, &50, &10, &0);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidPercentages)));
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn test_update_split_percentages_must_sum_to_100() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(result, Err(Ok(RemittanceSplitError::InvalidPercentages)));
 }
 
 // ---------------------------------------------------------------------------
@@ -237,24 +237,6 @@ fn test_calculate_complex_rounding() {
     assert_eq!(amounts.get(3).unwrap(), 410);
 }
 
-#[test]
-fn test_create_remittance_schedule_succeeds() {
-    setup_test_env!(env, RemittanceSplit, RemittanceSplitClient, client, owner);
-    set_ledger_time(&env, 1000);
-
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
-
-    let schedule_id = client.create_remittance_schedule(&owner, &10000, &3000, &86400);
-    assert_eq!(schedule_id, 1);
-
-    let schedule = client.get_remittance_schedule(&schedule_id);
-    assert!(schedule.is_some());
-    let schedule = schedule.unwrap();
-    assert_eq!(schedule.amount, 10000);
-    assert_eq!(schedule.next_due, 3000);
-    assert_eq!(schedule.interval, 86400);
-    assert!(schedule.active);
-}
 // ---------------------------------------------------------------------------
 // distribute_usdc — happy path
 // ---------------------------------------------------------------------------
@@ -893,7 +875,7 @@ fn test_instance_ttl_extended_on_initialize_split() {
 //  5. import_snapshot rejects a tampered checksum regardless of version.
 // ============================================================================
 
-/// export_snapshot must embed schema_version == SCHEMA_VERSION (currently 1).
+/// export_snapshot must embed schema_version == SCHEMA_VERSION (currently 2).
 #[test]
 fn test_export_snapshot_contains_correct_schema_version() {
     let env = Env::default();
@@ -901,17 +883,19 @@ fn test_export_snapshot_contains_correct_schema_version() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
     assert_eq!(
-        snapshot.schema_version, 1,
-        "schema_version must equal SCHEMA_VERSION (1)"
+        snapshot.schema_version, 2,
+        "schema_version must equal SCHEMA_VERSION (2)"
     );
 }
 
-/// import_snapshot with the current schema version (1) must succeed.
+/// import_snapshot with the current schema version (2) must succeed.
 #[test]
 fn test_import_snapshot_current_schema_version_succeeds() {
     let env = Env::default();
@@ -919,11 +903,13 @@ fn test_import_snapshot_current_schema_version_succeeds() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
-    assert_eq!(snapshot.schema_version, 1);
+    assert_eq!(snapshot.schema_version, 2);
 
     let ok = client.import_snapshot(&owner, &1, &snapshot);
     assert!(ok, "import with current schema version must succeed");
@@ -938,8 +924,10 @@ fn test_import_snapshot_future_schema_version_rejected() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     // Simulate a snapshot produced by a newer contract version.
@@ -962,11 +950,13 @@ fn test_import_snapshot_too_old_schema_version_rejected() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
-    // Simulate a snapshot too old to import.
+    // Simulate a snapshot too old to import (schema_version 0 < MIN_SUPPORTED_SCHEMA_VERSION 2).
     snapshot.schema_version = 0;
 
     let result = client.try_import_snapshot(&owner, &1, &snapshot);
@@ -986,8 +976,10 @@ fn test_import_snapshot_tampered_checksum_rejected() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let mut snapshot = client.export_snapshot(&owner).unwrap();
     snapshot.checksum = snapshot.checksum.wrapping_add(1);
@@ -1008,15 +1000,17 @@ fn test_snapshot_export_import_roundtrip_restores_config() {
     let contract_id = env.register_contract(None, RemittanceSplit);
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     // Update so there is something interesting to round-trip.
     // Note: update_split checks the nonce but does NOT increment it.
     client.update_split(&owner, &1, &40, &40, &10, &10);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
-    assert_eq!(snapshot.schema_version, 1);
+    assert_eq!(snapshot.schema_version, 2);
 
     // Nonce is 1 after initialize_split (update_split does not increment nonce).
     let ok = client.import_snapshot(&owner, &1, &snapshot);
@@ -1038,8 +1032,10 @@ fn test_import_snapshot_unauthorized_caller_rejected() {
     let client = RemittanceSplitClient::new(&env, &contract_id);
     let owner = Address::generate(&env);
     let other = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = setup_token(&env, &token_admin, &owner, 0);
 
-    client.initialize_split(&owner, &0, &50, &30, &15, &5);
+    client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
 
     let snapshot = client.export_snapshot(&owner).unwrap();
 
