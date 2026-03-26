@@ -107,7 +107,16 @@ mod tests {
     /// Full test environment with all contracts deployed.
     /// Returns (env, orchestrator, family_wallet, remittance_split,
     ///          savings, bills, insurance, user)
-    fn setup() -> (Env, Address, Address, Address, Address, Address, Address, Address) {
+    fn setup() -> (
+        Env,
+        Address,
+        Address,
+        Address,
+        Address,
+        Address,
+        Address,
+        Address,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -141,9 +150,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_savings_deposit(
-            &user, &5000, &family_wallet_id, &savings_id, &1,
-        );
+        let result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &1);
 
         assert!(result.is_ok());
     }
@@ -153,9 +161,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_savings_deposit(
-            &user, &5000, &family_wallet_id, &savings_id, &999,
-        );
+        let result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &999);
 
         assert!(result.is_err());
     }
@@ -165,9 +172,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_savings_deposit(
-            &user, &15000, &family_wallet_id, &savings_id, &1,
-        );
+        let result =
+            client.try_execute_savings_deposit(&user, &15000, &family_wallet_id, &savings_id, &1);
 
         assert!(result.is_err());
         assert_eq!(
@@ -181,9 +187,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, _, bills_id, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_bill_payment(
-            &user, &3000, &family_wallet_id, &bills_id, &1,
-        );
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1);
 
         assert!(result.is_ok());
     }
@@ -193,9 +198,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, _, bills_id, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_bill_payment(
-            &user, &3000, &family_wallet_id, &bills_id, &999,
-        );
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &999);
 
         assert!(result.is_err());
     }
@@ -206,7 +210,11 @@ mod tests {
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_insurance_payment(
-            &user, &2000, &family_wallet_id, &insurance_id, &1,
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &1,
         );
 
         assert!(result.is_ok());
@@ -214,13 +222,29 @@ mod tests {
 
     #[test]
     fn test_execute_remittance_flow_succeeds() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_ok());
@@ -237,13 +261,29 @@ mod tests {
 
     #[test]
     fn test_execute_remittance_flow_spending_limit_exceeded_fails() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &15000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &15000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_err());
@@ -255,13 +295,29 @@ mod tests {
 
     #[test]
     fn test_execute_remittance_flow_invalid_amount_fails() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &0, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &0,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_err());
@@ -301,14 +357,27 @@ mod tests {
     /// No state changes from prior steps (permission checks) persist.
     #[test]
     fn test_rollback_savings_leg_goal_not_found() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // goal_id=999 causes mock savings to panic → full transaction revert
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &999, // invalid goal — triggers savings failure
             &1,
             &1,
@@ -325,14 +394,27 @@ mod tests {
     /// Verifies rollback when savings is rejected mid-flow.
     #[test]
     fn test_rollback_savings_leg_goal_already_completed() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // goal_id=998 simulates a completed goal that rejects further deposits
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &998, // completed goal — triggers savings failure
             &1,
             &1,
@@ -351,9 +433,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_savings_deposit(
-            &user, &5000, &family_wallet_id, &savings_id, &999,
-        );
+        let result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &999);
 
         assert!(
             result.is_err(),
@@ -367,9 +448,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, savings_id, _, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_savings_deposit(
-            &user, &5000, &family_wallet_id, &savings_id, &998,
-        );
+        let result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &998);
 
         assert!(
             result.is_err(),
@@ -386,14 +466,27 @@ mod tests {
     /// including any savings state changes in the same transaction.
     #[test]
     fn test_rollback_bills_leg_bill_not_found() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // Savings succeeds (goal_id=1), but bills fails (bill_id=999)
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &1,
             &999, // invalid bill — triggers bills failure after savings completes
             &1,
@@ -410,14 +503,27 @@ mod tests {
     /// Verifies double-payment protection triggers a full rollback.
     #[test]
     fn test_rollback_bills_leg_already_paid() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // bill_id=998 simulates an already-paid bill
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &1,
             &998, // already paid bill
             &1,
@@ -435,9 +541,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, _, bills_id, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_bill_payment(
-            &user, &3000, &family_wallet_id, &bills_id, &999,
-        );
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &999);
 
         assert!(
             result.is_err(),
@@ -451,9 +556,8 @@ mod tests {
         let (env, orchestrator_id, family_wallet_id, _, _, bills_id, _, user) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
-        let result = client.try_execute_bill_payment(
-            &user, &3000, &family_wallet_id, &bills_id, &998,
-        );
+        let result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &998);
 
         assert!(
             result.is_err(),
@@ -470,15 +574,28 @@ mod tests {
     /// including savings and bills changes already applied in this transaction.
     #[test]
     fn test_rollback_insurance_leg_policy_not_found() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // Savings succeeds (goal_id=1), bills succeeds (bill_id=1),
         // but insurance fails (policy_id=999)
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &1,
             &1,
             &999, // invalid policy — triggers insurance failure last
@@ -495,13 +612,26 @@ mod tests {
     /// The mock returns false for policy_id=998, which the orchestrator treats as failure.
     #[test]
     fn test_rollback_insurance_leg_inactive_policy() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &1,
             &1,
             &998, // inactive policy
@@ -540,7 +670,11 @@ mod tests {
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_insurance_payment(
-            &user, &2000, &family_wallet_id, &insurance_id, &999,
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &999,
         );
 
         assert!(
@@ -557,17 +691,36 @@ mod tests {
     /// Verifies no downstream state is touched when the permission gate rejects the caller.
     #[test]
     fn test_rollback_permission_denied_before_any_leg() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // Amount > 10000 causes MockFamilyWallet to deny permission
         let result = client.try_execute_remittance_flow(
-            &user, &10001, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &10001,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
-        assert!(result.is_err(), "Flow must be rejected when permission is denied");
+        assert!(
+            result.is_err(),
+            "Flow must be rejected when permission is denied"
+        );
         assert_eq!(
             result.unwrap_err().unwrap(),
             OrchestratorError::PermissionDenied,
@@ -578,13 +731,29 @@ mod tests {
     /// ROLLBACK-13: Negative amount is rejected before any downstream leg executes.
     #[test]
     fn test_rollback_negative_amount_rejected() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &-500, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &-500,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_err(), "Flow must reject negative amounts");
@@ -598,13 +767,29 @@ mod tests {
     /// ROLLBACK-14: Zero amount is rejected before any downstream leg executes.
     #[test]
     fn test_rollback_zero_amount_rejected() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &0, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &0,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_err(), "Flow must reject zero amounts");
@@ -624,14 +809,27 @@ mod tests {
     /// and the transaction is fully rolled back.
     #[test]
     fn test_rollback_all_legs_fail() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // All legs use invalid IDs
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &999, // savings fails
             &999, // bills would also fail
             &999, // insurance would also fail
@@ -652,22 +850,38 @@ mod tests {
     /// confirming no funds are created or destroyed during execution.
     #[test]
     fn test_accounting_consistency_on_success() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let total = 10000i128;
         let result = client.try_execute_remittance_flow(
-            &user, &total, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &total,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_ok());
         let flow = result.unwrap().unwrap();
 
         // Verify allocation totals are internally consistent
-        let allocated = flow.spending_amount + flow.savings_amount
-            + flow.bills_amount + flow.insurance_amount;
+        let allocated =
+            flow.spending_amount + flow.savings_amount + flow.bills_amount + flow.insurance_amount;
 
         assert_eq!(
             allocated, total,
@@ -676,10 +890,22 @@ mod tests {
         );
 
         // Verify each allocation is non-negative (no negative transfers)
-        assert!(flow.spending_amount >= 0, "Spending allocation must be non-negative");
-        assert!(flow.savings_amount >= 0, "Savings allocation must be non-negative");
-        assert!(flow.bills_amount >= 0, "Bills allocation must be non-negative");
-        assert!(flow.insurance_amount >= 0, "Insurance allocation must be non-negative");
+        assert!(
+            flow.spending_amount >= 0,
+            "Spending allocation must be non-negative"
+        );
+        assert!(
+            flow.savings_amount >= 0,
+            "Savings allocation must be non-negative"
+        );
+        assert!(
+            flow.bills_amount >= 0,
+            "Bills allocation must be non-negative"
+        );
+        assert!(
+            flow.insurance_amount >= 0,
+            "Insurance allocation must be non-negative"
+        );
     }
 
     /// ROLLBACK-17: Correct split percentages are applied (40/30/20/10).
@@ -687,13 +913,29 @@ mod tests {
     /// output is faithfully passed to each downstream leg.
     #[test]
     fn test_accounting_split_percentages_correct() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_ok());
@@ -703,21 +945,40 @@ mod tests {
         assert_eq!(flow.spending_amount, 4000, "Spending must be 40% of 10000");
         assert_eq!(flow.savings_amount, 3000, "Savings must be 30% of 10000");
         assert_eq!(flow.bills_amount, 2000, "Bills must be 20% of 10000");
-        assert_eq!(flow.insurance_amount, 1000, "Insurance must be 10% of 10000");
+        assert_eq!(
+            flow.insurance_amount, 1000,
+            "Insurance must be 10% of 10000"
+        );
     }
 
     /// ROLLBACK-18: Minimum valid amount (1) is processed correctly.
     /// Verifies no off-by-one errors or underflow at the lower bound.
     #[test]
     fn test_accounting_minimum_valid_amount() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // Amount of 1 — allocations will round down to 0 for each leg
         let result = client.try_execute_remittance_flow(
-            &user, &1, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &1,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         // This documents the boundary behavior: flow may succeed or fail
@@ -738,17 +999,36 @@ mod tests {
     /// Verifies the upper boundary of the spending limit passes correctly.
     #[test]
     fn test_accounting_maximum_valid_amount_at_spending_limit() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // Exactly at the limit (10000 <= 10000 → allowed by mock)
         let result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
-        assert!(result.is_ok(), "Amount at the spending limit must be allowed");
+        assert!(
+            result.is_ok(),
+            "Amount at the spending limit must be allowed"
+        );
         let flow = result.unwrap().unwrap();
         assert_eq!(flow.total_amount, 10000);
     }
@@ -757,13 +1037,29 @@ mod tests {
     /// Verifies the upper boundary is exclusive (> 10000 is denied).
     #[test]
     fn test_accounting_one_above_spending_limit_rejected() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         let result = client.try_execute_remittance_flow(
-            &user, &10001, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id, &1, &1, &1,
+            &user,
+            &10001,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
 
         assert!(result.is_err(), "Amount one above limit must be rejected");
@@ -786,15 +1082,13 @@ mod tests {
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // First call: fails (goal 999 not found)
-        let fail_result = client.try_execute_savings_deposit(
-            &user, &5000, &family_wallet_id, &savings_id, &999,
-        );
+        let fail_result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &999);
         assert!(fail_result.is_err(), "First call must fail");
 
         // Second call: succeeds (goal 1 is valid)
-        let success_result = client.try_execute_savings_deposit(
-            &user, &5000, &family_wallet_id, &savings_id, &1,
-        );
+        let success_result =
+            client.try_execute_savings_deposit(&user, &5000, &family_wallet_id, &savings_id, &1);
         assert!(
             success_result.is_ok(),
             "Second call must succeed — rolled-back state must not persist"
@@ -808,15 +1102,13 @@ mod tests {
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // First call: fails (bill 999 not found)
-        let fail_result = client.try_execute_bill_payment(
-            &user, &3000, &family_wallet_id, &bills_id, &999,
-        );
+        let fail_result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &999);
         assert!(fail_result.is_err(), "First call must fail");
 
         // Second call: succeeds (bill 1 is valid)
-        let success_result = client.try_execute_bill_payment(
-            &user, &3000, &family_wallet_id, &bills_id, &1,
-        );
+        let success_result =
+            client.try_execute_bill_payment(&user, &3000, &family_wallet_id, &bills_id, &1);
         assert!(
             success_result.is_ok(),
             "Second call must succeed — rolled-back state must not persist"
@@ -831,13 +1123,21 @@ mod tests {
 
         // First call: fails (policy 999 not found)
         let fail_result = client.try_execute_insurance_payment(
-            &user, &2000, &family_wallet_id, &insurance_id, &999,
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &999,
         );
         assert!(fail_result.is_err(), "First call must fail");
 
         // Second call: succeeds (policy 1 is valid)
         let success_result = client.try_execute_insurance_payment(
-            &user, &2000, &family_wallet_id, &insurance_id, &1,
+            &user,
+            &2000,
+            &family_wallet_id,
+            &insurance_id,
+            &1,
         );
         assert!(
             success_result.is_ok(),
@@ -849,14 +1149,27 @@ mod tests {
     /// Verifies end-to-end rollback isolation across consecutive transactions.
     #[test]
     fn test_rollback_failed_full_flow_does_not_poison_subsequent_full_flow() {
-        let (env, orchestrator_id, family_wallet_id, remittance_split_id,
-             savings_id, bills_id, insurance_id, user) = setup();
+        let (
+            env,
+            orchestrator_id,
+            family_wallet_id,
+            remittance_split_id,
+            savings_id,
+            bills_id,
+            insurance_id,
+            user,
+        ) = setup();
         let client = OrchestratorClient::new(&env, &orchestrator_id);
 
         // First call: bills leg fails
         let fail_result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
             &1,
             &999, // bills fails
             &1,
@@ -865,9 +1178,16 @@ mod tests {
 
         // Second call: all legs valid
         let success_result = client.try_execute_remittance_flow(
-            &user, &10000, &family_wallet_id, &remittance_split_id,
-            &savings_id, &bills_id, &insurance_id,
-            &1, &1, &1,
+            &user,
+            &10000,
+            &family_wallet_id,
+            &remittance_split_id,
+            &savings_id,
+            &bills_id,
+            &insurance_id,
+            &1,
+            &1,
+            &1,
         );
         assert!(
             success_result.is_ok(),

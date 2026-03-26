@@ -15,8 +15,9 @@ const INSTANCE_BUMP_AMOUNT: u32 = 518400;
 const ARCHIVE_LIFETIME_THRESHOLD: u32 = 17280;
 const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 
-// Signature expiration time (24 hours in seconds)
-const SIGNATURE_EXPIRATION: u64 = 86400;
+// Signature expiration time constants
+const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
+const MAX_PROPOSAL_EXPIRY: u64 = 604800; // 7 days
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -150,8 +151,19 @@ pub struct BatchMemberItem {
 pub enum ArchiveEvent {
     TransactionsArchived,
     ExpiredCleaned,
+    TransactionCancelled,
 }
 
+/// @title Family Wallet Multisig Proposal Expiry
+/// @notice Manages the lifecycle of multisig proposals with deterministic expiry.
+///
+/// Security Assumptions:
+/// 1. Proposer Authorization: Only authenticated family members can propose.
+/// 2. Deterministic Expiry: Expiry is set at proposal time based on contract configuration.
+/// 3. Signer Authorization: Only designated signers for a transaction type can sign.
+/// 4. Cancellation Safety: Proposers can cancel their own proposals; Admins can cancel any.
+/// 5. Expiry Enforcement: Expired proposals cannot be signed or executed.
+/// 6. Storage Bounds: Expired proposals can be pruned by Admins to manage storage costs.
 #[contract]
 pub struct FamilyWallet;
 
@@ -172,6 +184,8 @@ pub enum Error {
     MemberNotFound = 11,
     TransactionAlreadyExecuted = 12,
     InvalidSpendingLimit = 13,
+    TransactionCancelled = 14,
+    InvalidExpiryDuration = 15,
 }
 
 #[contractimpl]
@@ -250,14 +264,19 @@ impl FamilyWallet {
             .instance()
             .set(&symbol_short!("NEXT_TX"), &1u64);
 
-        let em_config = EmergencyConfig {
-            max_amount: 1000_0000000,
-            cooldown: 3600,
-            min_balance: 0,
-        };
+        env.storage().instance().set(
+            &symbol_short!("EM_CONF"),
+            &EmergencyConfig {
+                max_amount: 1000_0000000,
+                cooldown: 3600,
+                min_balance: 0,
+            },
+        );
+
         env.storage()
             .instance()
-            .set(&symbol_short!("EM_CONF"), &em_config);
+            .set(&symbol_short!("PROP_EXP"), &DEFAULT_PROPOSAL_EXPIRY);
+
         env.storage()
             .instance()
             .set(&symbol_short!("EM_MODE"), &false);
@@ -266,6 +285,78 @@ impl FamilyWallet {
             .set(&symbol_short!("EM_LAST"), &0u64);
 
         true
+    }
+
+    /// @notice Set the duration after which a multisig proposal expires.
+    /// @dev Only Owner or Admin can set the expiry duration.
+    /// @param caller Admin/Owner authorizing the change.
+    /// @param duration Unix duration in seconds (max 7 days).
+    pub fn set_proposal_expiry(env: Env, caller: Address, duration: u64) -> Result<bool, Error> {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        if !Self::is_owner_or_admin(&env, &caller) {
+            return Err(Error::Unauthorized);
+        }
+
+        if duration == 0 || duration > MAX_PROPOSAL_EXPIRY {
+            return Err(Error::InvalidExpiryDuration);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PROP_EXP"), &duration);
+
+        Ok(true)
+    }
+
+    pub fn get_proposal_expiry_public(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY)
+    }
+
+    /// @notice Cancel a pending multisig proposal.
+    /// @dev Only the original proposer or an Admin/Owner can cancel a proposal.
+    /// @param caller Proposer or Admin/Owner.
+    /// @param tx_id The ID of the transaction to cancel.
+    pub fn cancel_transaction(env: Env, caller: Address, tx_id: u64) -> Result<bool, Error> {
+        caller.require_auth();
+        Self::require_not_paused(&env);
+
+        let mut pending_txs: Map<u64, PendingTransaction> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PEND_TXS"))
+            .ok_or(Error::TransactionNotFound)?;
+
+        let tx = pending_txs.get(tx_id).ok_or(Error::TransactionNotFound)?;
+
+        let is_proposer = tx.proposer == caller;
+        let is_admin = Self::is_owner_or_admin(&env, &caller);
+
+        if !is_proposer && !is_admin {
+            return Err(Error::Unauthorized);
+        }
+
+        Self::extend_instance_ttl(&env);
+
+        pending_txs.remove(tx_id);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("PEND_TXS"), &pending_txs);
+
+        Self::update_storage_stats(&env);
+
+        env.events().publish(
+            (symbol_short!("wallet"), ArchiveEvent::TransactionCancelled),
+            (tx_id, caller),
+        );
+
+        Ok(true)
     }
 
     pub fn add_member(
@@ -539,13 +630,19 @@ impl FamilyWallet {
         let mut signatures = Vec::new(&env);
         signatures.push_back(proposer.clone());
 
+        let expiry_duration: u64 = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("PROP_EXP"))
+            .unwrap_or(DEFAULT_PROPOSAL_EXPIRY);
+
         let pending_tx = PendingTransaction {
             tx_id,
             tx_type,
             proposer: proposer.clone(),
             signatures,
             created_at: timestamp,
-            expires_at: timestamp + SIGNATURE_EXPIRATION,
+            expires_at: timestamp + expiry_duration,
             data: data.clone(),
         };
 
@@ -580,7 +677,9 @@ impl FamilyWallet {
             .get(&symbol_short!("PEND_TXS"))
             .unwrap_or_else(|| panic!("Pending transactions map not initialized"));
 
-        let mut pending_tx = pending_txs.get(tx_id).unwrap_or_else(|| panic!("Transaction not found"));
+        let mut pending_tx = pending_txs
+            .get(tx_id)
+            .unwrap_or_else(|| panic!("Transaction not found"));
 
         let current_time = env.ledger().timestamp();
         if current_time > pending_tx.expires_at {
@@ -1215,42 +1314,42 @@ impl FamilyWallet {
     }
 
     /// Set or transfer the upgrade admin role.
-    /// 
+    ///
     /// # Security Requirements
     /// - Only wallet owners can set or transfer upgrade admin role
     /// - Caller must be authenticated via require_auth()
     /// - Caller must have at least Owner role in the family wallet
-    /// 
+    ///
     /// # Parameters
     /// - `caller`: The address attempting to set the upgrade admin
     /// - `new_admin`: The address to become the new upgrade admin
-    /// 
+    ///
     /// # Returns
     /// - `true` on successful admin transfer
-    /// 
+    ///
     /// # Panics
     /// - If caller lacks Owner role or higher
     pub fn set_upgrade_admin(env: Env, caller: Address, new_admin: Address) -> bool {
         caller.require_auth();
         Self::require_role_at_least(&env, &caller, FamilyRole::Owner);
-        
+
         let current_upgrade_admin = Self::get_upgrade_admin(&env);
-        
+
         env.storage()
             .instance()
             .set(&symbol_short!("UPG_ADM"), &new_admin);
-        
+
         // Emit admin transfer event for audit trail
         env.events().publish(
             (symbol_short!("family"), symbol_short!("adm_xfr")),
             (current_upgrade_admin, new_admin.clone()),
         );
-        
+
         true
     }
 
     /// Get the current upgrade admin address.
-    /// 
+    ///
     /// # Returns
     /// - `Some(Address)` if upgrade admin is set
     /// - `None` if no upgrade admin has been configured
@@ -1592,7 +1691,9 @@ impl FamilyWallet {
             .instance()
             .get(&symbol_short!("MEMBERS"))
             .unwrap_or_else(|| panic!("Wallet not initialized"));
-        let member = members.get(caller.clone()).unwrap_or_else(|| panic!("Not a family member"));
+        let member = members
+            .get(caller.clone())
+            .unwrap_or_else(|| panic!("Not a family member"));
         if Self::role_has_expired(env, caller) {
             panic!("Role has expired");
         }

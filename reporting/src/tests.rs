@@ -905,8 +905,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
     let base_ts = 1_000_000u64;
     for i in 0..TOTAL {
         set_ledger_time(&env, 10 + i as u32, base_ts + i);
-        let report =
-            client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+        let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
         client.store_report(&user, &report, &(202_400 + i));
     }
 
@@ -939,8 +938,7 @@ fn test_storage_stats_regression_across_archive_and_cleanup_cycles() {
 
     // Second cycle: new report increments active; full archive then cleanup returns to zero archived
     set_ledger_time(&env, 700, base_ts + 300);
-    let report =
-        client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
+    let report = client.get_financial_health_report(&user, &10000, &1704067200, &1706745600);
     client.store_report(&user, &report, &209_912);
 
     let after_new_store = client.get_storage_stats();
@@ -1541,13 +1539,10 @@ fn test_trend_multi_dense_five_points() {
     let (client, _) = make_client(&env);
     let user = Address::generate(&env);
 
-    let history = make_history(&env, &[
-        (1, 1000),
-        (2, 1100),
-        (3, 1210),
-        (4, 1331),
-        (5, 1464),
-    ]);
+    let history = make_history(
+        &env,
+        &[(1, 1000), (2, 1100), (3, 1210), (4, 1331), (5, 1464)],
+    );
     let results = client.get_trend_analysis_multi(&user, &history);
 
     assert_eq!(results.len(), 4);
@@ -1714,4 +1709,3 @@ fn test_trend_multi_deterministic_across_timestamps() {
         );
     }
 }
-

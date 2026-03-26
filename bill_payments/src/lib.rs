@@ -2953,7 +2953,6 @@ mod test {
         client.bulk_cleanup_bills(&admin, &1000000);
     }
 }
-}
 
 fn extend_instance_ttl(env: &Env) {
     // Extend the contract instance itself
@@ -2961,13 +2960,4 @@ fn extend_instance_ttl(env: &Env) {
         INSTANCE_LIFETIME_THRESHOLD, 
         INSTANCE_BUMP_AMOUNT
     );
-}
-}
-
-pub fn create_bill(env: Env, ...) {
-    extend_instance_ttl(&env); // Keep contract alive
-    // ... logic to create bill ...
-    let key = DataKey::Bill(bill_id);
-    env.storage().persistent().set(&key, &bill);
-    extend_ttl(&env, &key); // Keep this specific bill alive
 }

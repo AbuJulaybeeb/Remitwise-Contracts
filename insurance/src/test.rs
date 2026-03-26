@@ -37,7 +37,6 @@ fn test_create_policy_succeeds() {
 }
 
 #[test]
-#[should_panic(expected = "Monthly premium must be positive")]
 fn test_create_policy_invalid_premium() {
     let env = Env::default();
     let contract_id = env.register_contract(None, Insurance);
@@ -46,18 +45,13 @@ fn test_create_policy_invalid_premium() {
 
     env.mock_all_auths();
 
-    client.create_policy(
     let result = client.try_create_policy(
         &owner,
         &String::from_str(&env, "Bad"),
-        &String::from_str(&env, "Type"),
+        &CoverageType::Health,
         &0,
         &10000,
     );
-}
-
-#[test]
-#[should_panic(expected = "Coverage amount must be positive")]
     assert_eq!(result, Err(Ok(InsuranceError::InvalidPremium)));
 }
 
@@ -70,11 +64,10 @@ fn test_create_policy_invalid_coverage() {
 
     env.mock_all_auths();
 
-    client.create_policy(
     let result = client.try_create_policy(
         &owner,
         &String::from_str(&env, "Bad"),
-        &String::from_str(&env, "Type"),
+        &CoverageType::Health,
         &100,
         &0,
     );

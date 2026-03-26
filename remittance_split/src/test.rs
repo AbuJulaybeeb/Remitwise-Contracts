@@ -2,8 +2,8 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as AddressTrait, Events, Ledger},
     testutils::storage::Instance as StorageInstance,
+    testutils::{Address as AddressTrait, Events, Ledger},
     token::{StellarAssetClient, TokenClient},
     Address, Env, Symbol, TryFromVal,
 };
@@ -15,7 +15,9 @@ use soroban_sdk::{
 /// Register a native Stellar asset (SAC) and return (contract_id, admin).
 /// The admin is the issuer; we mint `amount` to `recipient`.
 fn setup_token(env: &Env, admin: &Address, recipient: &Address, amount: i128) -> Address {
-    let token_id = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let sac = StellarAssetClient::new(env, &token_id);
     sac.mint(recipient, &amount);
     token_id
@@ -68,7 +70,10 @@ fn test_initialize_split_invalid_sum() {
     let token_id = setup_token(&env, &token_admin, &owner, 0);
 
     let result = client.try_initialize_split(&owner, &0, &token_id, &50, &50, &10, &0);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }
 
 #[test]
@@ -163,7 +168,10 @@ fn test_update_split_percentages_must_sum_to_100() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +403,10 @@ fn test_distribute_usdc_untrusted_token_rejected() {
     let evil_token = Address::generate(&env);
     let accounts = make_accounts(&env);
     let result = client.try_distribute_usdc(&evil_token, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::UntrustedTokenContract)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::UntrustedTokenContract))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -422,7 +433,10 @@ fn test_distribute_usdc_self_transfer_spending_rejected() {
         insurance: Address::generate(&env),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -444,7 +458,10 @@ fn test_distribute_usdc_self_transfer_savings_rejected() {
         insurance: Address::generate(&env),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -466,7 +483,10 @@ fn test_distribute_usdc_self_transfer_bills_rejected() {
         insurance: Address::generate(&env),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 #[test]
@@ -488,7 +508,10 @@ fn test_distribute_usdc_self_transfer_insurance_rejected() {
         insurance: owner.clone(),
     };
     let result = client.try_distribute_usdc(&token_id, &owner, &1, &accounts, &1_000);
-    assert_eq!(result, Err(Ok(RemittanceSplitError::SelfTransferNotAllowed)));
+    assert_eq!(
+        result,
+        Err(Ok(RemittanceSplitError::SelfTransferNotAllowed))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -683,9 +706,9 @@ fn test_distribute_usdc_multiple_rounds() {
 
     let token = TokenClient::new(&env, &token_id);
     assert_eq!(token.balance(&accounts.spending), 1_500); // 3 * 500
-    assert_eq!(token.balance(&accounts.savings), 900);    // 3 * 300
-    assert_eq!(token.balance(&accounts.bills), 450);      // 3 * 150
-    assert_eq!(token.balance(&accounts.insurance), 150);  // 3 * 50
+    assert_eq!(token.balance(&accounts.savings), 900); // 3 * 300
+    assert_eq!(token.balance(&accounts.bills), 450); // 3 * 150
+    assert_eq!(token.balance(&accounts.insurance), 150); // 3 * 50
     assert_eq!(token.balance(&owner), 0);
 }
 
@@ -879,7 +902,10 @@ fn test_instance_ttl_extended_on_initialize_split() {
 
     client.initialize_split(&owner, &0, &token_id, &50, &30, &15, &5);
     let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
-    assert!(ttl >= 518_400, "TTL must be >= INSTANCE_BUMP_AMOUNT after init");
+    assert!(
+        ttl >= 518_400,
+        "TTL must be >= INSTANCE_BUMP_AMOUNT after init"
+    );
 }
 
 // ============================================================================
