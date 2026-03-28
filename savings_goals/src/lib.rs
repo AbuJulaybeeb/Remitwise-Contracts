@@ -88,6 +88,7 @@ pub struct SavingsSchedule {
 }
 
 #[contracttype]
+#[derive(Clone, Copy, Debug)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SavingsGoalsError {
     InvalidAmount = 1,
@@ -414,7 +415,7 @@ impl SavingsGoalContract {
         // Authorization logic:
         // 1. If no upgrade admin exists, caller must equal new_admin (bootstrap)
         // 2. If upgrade admin exists, only current upgrade admin can transfer
-        match current_upgrade_admin {
+        match &current_upgrade_admin {
             None => {
                 // Bootstrap pattern - caller must be setting themselves as admin
                 if caller != new_admin {
@@ -472,6 +473,11 @@ impl SavingsGoalContract {
     // Tag management
     // -----------------------------------------------------------------------
 
+    /// Validates a tag batch for metadata operations.
+    ///
+    /// Requirements:
+    /// - At least one tag must be provided.
+    /// - Each tag length must be between 1 and 32 characters.
     fn validate_tags(tags: &Vec<String>) {
         if tags.is_empty() {
             panic!("Tags cannot be empty");
@@ -483,6 +489,15 @@ impl SavingsGoalContract {
         }
     }
 
+    /// Adds tags to a goal's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the goal owner can add tags.
+    ///
+    /// Notes:
+    /// - Duplicate tags are preserved as provided.
+    /// - Emits `(savings, tags_add)` with `(goal_id, caller, tags)`.
     pub fn add_tags_to_goal(
         env: Env,
         caller: Address,
@@ -523,6 +538,15 @@ impl SavingsGoalContract {
         Self::append_audit(&env, symbol_short!("add_tags"), &caller, true);
     }
 
+    /// Removes tags from a goal's metadata.
+    ///
+    /// Security:
+    /// - `caller` must authorize the invocation.
+    /// - Only the goal owner can remove tags.
+    ///
+    /// Notes:
+    /// - Removing a tag that is not present is a no-op.
+    /// - Emits `(savings, tags_rem)` with `(goal_id, caller, tags)`.
     pub fn remove_tags_from_goal(
         env: Env,
         caller: Address,

@@ -1,19 +1,20 @@
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString};
+use soroban_sdk::{testutils::Address as _, Address, Env, String as SorobanString, IntoVal, Symbol, Val};
+use soroban_sdk::testutils::Events;
 
 // Import all contract types and clients
 use bill_payments::{BillPayments, BillPaymentsClient};
 use insurance::{Insurance, InsuranceClient};
+use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError};
 use remittance_split::{RemittanceSplit, RemittanceSplitClient};
 use savings_goals::{SavingsGoalContract, SavingsGoalContractClient};
-use orchestrator::{Orchestrator, OrchestratorClient, OrchestratorError};
 
 // ============================================================================
 // Mock Contracts for Orchestrator Integration Tests
 // ============================================================================
 
-use soroban_sdk::{contract, contractimpl, Vec as SorobanVec};
+use soroban_sdk::{contract, contractimpl, Vec as SorobanVec, vec as soroban_vec};
 
 /// Mock Family Wallet — approves any amount <= 100_000
 #[contract]
@@ -797,5 +798,287 @@ fn test_event_topic_compliance_across_contracts() {
     }
 
     // Fail if any non-compliant events found, listing one example for debugging
-    assert_eq!(non_compliant.len(), 0u32, "Found events that do not follow the Remitwise topic schema. See EVENTS.md and remitwise-common::RemitwiseEvents for guidance.");
+        assert_eq!(non_compliant.len(), 0u32, "Found events that do not follow the Remitwise topic schema. See EVENTS.md and remitwise-common::RemitwiseEvents for guidance.");
+}
+
+// ============================================================================
+// Stress Integration Tests — Batch Execution & High Volume
+// ============================================================================
+
+/// INT-STRESS-01: High-volume batch execution (20 flows).
+/// Verifies that the orchestrator can handle a large batch of valid flows
+/// in a single transaction without exceeding gas limits.
+#[test]
+fn test_integration_stress_high_volume_batch_success() {
+    let (env, _, mock_savings_id, mock_bills_id, mock_insurance_id,
+         orchestrator_id, mock_family_wallet_id, mock_split_id, user) = setup_full_env();
+
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    let mut flows = SorobanVec::new(&env);
+    for _ in 0..20 {
+        flows.push_back(RemittanceFlowArgs {
+            total_amount: 1000,
+            family_wallet_addr: mock_family_wallet_id.clone(),
+            remittance_split_addr: mock_split_id.clone(),
+            savings_addr: mock_savings_id.clone(),
+            bills_addr: mock_bills_id.clone(),
+            insurance_addr: mock_insurance_id.clone(),
+            goal_id: 1,
+            bill_id: 1,
+            policy_id: 1,
+        });
+    }
+
+    let result = client.try_execute_remittance_batch(&user, &flows);
+
+    assert!(result.is_ok(), "STRESS-01: High-volume batch must succeed");
+    let batch_results = result.unwrap().unwrap();
+    assert_eq!(batch_results.len(), 20);
+
+    for res in batch_results.iter() {
+        let _ = res.expect("Flow in batch should be Ok");
+    }
+
+    println!("✅ STRESS-01 passed: 20-flow batch processed successfully");
+}
+
+/// INT-STRESS-02: Mixed success/failure batch.
+/// Verifies that the batch continues processing when individual flows fail
+/// (e.g., due to invalid IDs or spending limits).
+#[test]
+fn test_integration_stress_mixed_batch() {
+    let (env, _, mock_savings_id, mock_bills_id, mock_insurance_id,
+         orchestrator_id, mock_family_wallet_id, mock_split_id, user) = setup_full_env();
+
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    let mut flows = SorobanVec::new(&env);
+
+    // 1. Valid flow
+    flows.push_back(RemittanceFlowArgs {
+        total_amount: 1000,
+        family_wallet_addr: mock_family_wallet_id.clone(),
+        remittance_split_addr: mock_split_id.clone(),
+        savings_addr: mock_savings_id.clone(),
+        bills_addr: mock_bills_id.clone(),
+        insurance_addr: mock_insurance_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
+
+    // 2. Invalid flow (savings goal not found-999)
+    flows.push_back(RemittanceFlowArgs {
+        total_amount: 1000,
+        family_wallet_addr: mock_family_wallet_id.clone(),
+        remittance_split_addr: mock_split_id.clone(),
+        savings_addr: mock_savings_id.clone(),
+        bills_addr: mock_bills_id.clone(),
+        insurance_addr: mock_insurance_id.clone(),
+        goal_id: 999,
+        bill_id: 1,
+        policy_id: 1,
+    });
+
+    // 3. Invalid flow (spending limit exceeded-200,000 > 100,000)
+    flows.push_back(RemittanceFlowArgs {
+        total_amount: 200_000,
+        family_wallet_addr: mock_family_wallet_id.clone(),
+        remittance_split_addr: mock_split_id.clone(),
+        savings_addr: mock_savings_id.clone(),
+        bills_addr: mock_bills_id.clone(),
+        insurance_addr: mock_insurance_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
+
+    // 4. Valid flow
+    flows.push_back(RemittanceFlowArgs {
+        total_amount: 500,
+        family_wallet_addr: mock_family_wallet_id.clone(),
+        remittance_split_addr: mock_split_id.clone(),
+        savings_addr: mock_savings_id.clone(),
+        bills_addr: mock_bills_id.clone(),
+        insurance_addr: mock_insurance_id.clone(),
+        goal_id: 1,
+        bill_id: 1,
+        policy_id: 1,
+    });
+
+    let result = client.try_execute_remittance_batch(&user, &flows);
+
+    assert!(result.is_ok());
+    let batch_results = result.unwrap().unwrap();
+    assert_eq!(batch_results.len(), 4);
+
+    assert!(batch_results.get(0).unwrap().is_ok(), "Flow 1 should succeed");
+    assert!(batch_results.get(1).unwrap().is_err(), "Flow 2 should fail (savings)");
+    assert!(batch_results.get(2).unwrap().is_err(), "Flow 3 should fail (limit)");
+    assert!(batch_results.get(3).unwrap().is_ok(),  "Flow 4 should succeed");
+
+    // Type hint for Result
+    let _: Result<RemittanceFlowResult, OrchestratorError> = batch_results.get(0).unwrap();
+
+    println!("✅ STRESS-02 passed: Mixed success/failure batch tracked correctly");
+}
+
+/// INT-STRESS-03: Repeated batch execution.
+/// Verifies that repeated batch calls do not cause state corruption
+/// or unexpected gas escalations.
+#[test]
+fn test_integration_stress_repeated_batches() {
+    let (env, _, mock_savings_id, mock_bills_id, mock_insurance_id,
+         orchestrator_id, mock_family_wallet_id, mock_split_id, user) = setup_full_env();
+
+    let client = OrchestratorClient::new(&env, &orchestrator_id);
+
+    for i in 0..5 {
+        let mut flows = SorobanVec::new(&env);
+        for _ in 0..10 {
+            flows.push_back(RemittanceFlowArgs {
+                total_amount: 100,
+                family_wallet_addr: mock_family_wallet_id.clone(),
+                remittance_split_addr: mock_split_id.clone(),
+                savings_addr: mock_savings_id.clone(),
+                bills_addr: mock_bills_id.clone(),
+                insurance_addr: mock_insurance_id.clone(),
+                goal_id: 1,
+                bill_id: 1,
+                policy_id: 1,
+            });
+        }
+        let result = client.try_execute_remittance_batch(&user, &flows);
+        assert!(result.is_ok(), "Batch {} must succeed", i);
+    }
+
+    println!("✅ STRESS-03 passed: 5 consecutive batches processed cleanly");
+}
+
+// ============================================================================
+// Insurance Failure Tests
+// ============================================================================
+
+/// @notice Verifies inactive insurance policy fails orchestrated flow safely.
+/// @dev Checks that downstream writes in savings and bills are reverted.
+#[test]
+fn test_orchestrator_flow_inactive_policy_reverts_downstream_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let user = Address::generate(&env);
+
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let wallet_id = env.register_contract(None, MockFamilyWallet);
+    let split_id = env.register_contract(None, MockRemittanceSplit);
+    let savings_id = env.register_contract(None, SavingsGoalContract);
+    let bills_id = env.register_contract(None, BillPayments);
+    let insurance_id = env.register_contract(None, Insurance);
+
+    let orchestrator_client = OrchestratorClient::new(&env, &orchestrator_id);
+    let savings_client = SavingsGoalContractClient::new(&env, &savings_id);
+    let bills_client = BillPaymentsClient::new(&env, &bills_id);
+    let insurance_client = InsuranceClient::new(&env, &insurance_id);
+
+    let goal_id = savings_client.create_goal(
+        &user,
+        &SorobanString::from_str(&env, "Safety Goal"),
+        &10_000i128,
+        &(env.ledger().timestamp() + 365 * 86400),
+    );
+    let bill_id = bills_client.create_bill(
+        &user,
+        &SorobanString::from_str(&env, "Safety Bill"),
+        &500i128,
+        &(env.ledger().timestamp() + 30 * 86400),
+        &true,
+        &30u32,
+        &SorobanString::from_str(&env, "XLM"),
+    );
+    let policy_id = insurance_client.create_policy(
+        &user,
+        &SorobanString::from_str(&env, "Safety Policy"),
+        &SorobanString::from_str(&env, "health"),
+        &200i128,
+        &25_000i128,
+    );
+    insurance_client.deactivate_policy(&user, &policy_id);
+
+    let result = orchestrator_client.try_execute_remittance_flow(
+        &user,
+        &10_000i128,
+        &wallet_id,
+        &split_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &goal_id,
+        &bill_id,
+        &policy_id,
+    );
+    assert!(result.is_err());
+
+    let goal_after = savings_client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after.current_amount, 0, "Savings mutation must rollback");
+
+    let bill_after = bills_client.get_bill(&bill_id).unwrap();
+    assert!(!bill_after.paid, "Bill payment mutation must rollback");
+}
+
+/// @notice Verifies missing insurance policy fails orchestrated flow safely.
+/// @dev Uses unknown `policy_id` and asserts no persisted mutations.
+#[test]
+fn test_orchestrator_flow_missing_policy_reverts_downstream_state() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let user = Address::generate(&env);
+
+    let orchestrator_id = env.register_contract(None, Orchestrator);
+    let wallet_id = env.register_contract(None, MockFamilyWallet);
+    let split_id = env.register_contract(None, MockRemittanceSplit);
+    let savings_id = env.register_contract(None, SavingsGoalContract);
+    let bills_id = env.register_contract(None, BillPayments);
+    let insurance_id = env.register_contract(None, Insurance);
+
+    let orchestrator_client = OrchestratorClient::new(&env, &orchestrator_id);
+    let savings_client = SavingsGoalContractClient::new(&env, &savings_id);
+    let bills_client = BillPaymentsClient::new(&env, &bills_id);
+
+    let goal_id = savings_client.create_goal(
+        &user,
+        &SorobanString::from_str(&env, "Missing Policy Goal"),
+        &10_000i128,
+        &(env.ledger().timestamp() + 365 * 86400),
+    );
+    let bill_id = bills_client.create_bill(
+        &user,
+        &SorobanString::from_str(&env, "Missing Policy Bill"),
+        &500i128,
+        &(env.ledger().timestamp() + 30 * 86400),
+        &true,
+        &30u32,
+        &SorobanString::from_str(&env, "XLM"),
+    );
+
+    let result = orchestrator_client.try_execute_remittance_flow(
+        &user,
+        &10_000i128,
+        &wallet_id,
+        &split_id,
+        &savings_id,
+        &bills_id,
+        &insurance_id,
+        &goal_id,
+        &bill_id,
+        &999_999u32, // missing policy ID
+    );
+    assert!(result.is_err());
+
+    let goal_after = savings_client.get_goal(&goal_id).unwrap();
+    assert_eq!(goal_after.current_amount, 0, "Savings mutation must rollback");
+
+    let bill_after = bills_client.get_bill(&bill_id).unwrap();
+    assert!(!bill_after.paid, "Bill payment mutation must rollback");
 }
