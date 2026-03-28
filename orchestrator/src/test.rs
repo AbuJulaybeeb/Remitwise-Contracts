@@ -33,6 +33,12 @@ impl MockRemittanceSplit {
 #[contract]
 pub struct MockSavingsGoals;
 
+#[derive(Clone)]
+#[contracttype]
+pub struct SavingsState {
+    pub deposit_count: u32,
+}
+
 #[contractimpl]
 impl MockSavingsGoals {
     pub fn add_to_goal(_env: Env, _caller: Address, goal_id: u32, amount: i128) -> i128 {
@@ -45,6 +51,12 @@ impl MockSavingsGoals {
 
 #[contract]
 pub struct MockBillPayments;
+
+#[derive(Clone)]
+#[contracttype]
+pub struct BillsState {
+    pub payment_count: u32,
+}
 
 #[contractimpl]
 impl MockBillPayments {

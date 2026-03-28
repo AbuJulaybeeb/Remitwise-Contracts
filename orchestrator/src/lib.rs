@@ -11,8 +11,8 @@
 //! multi-contract operations with family wallet permission enforcement.
 
 use soroban_sdk::{
-    contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address,
-    Env, Symbol, Vec,
+    contract, contractclient, contracterror, contractimpl, contracttype, panic_with_error,
+    symbol_short, Address, Env, Symbol, Vec,
 };
 
 #[cfg(test)]
