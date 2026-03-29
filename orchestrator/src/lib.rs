@@ -382,7 +382,20 @@ impl Orchestrator {
         Ok(())
     }
 
-    fn validate_two_addresses(\n        env: &Env,\n        addr1: &Address,\n        addr2: &Address,\n    ) -> Result<(), OrchestratorError> {\n        let current = env.current_contract_address();\n        if addr1 == &current || addr2 == &current {\n            return Err(OrchestratorError::SelfReferenceNotAllowed);\n        }\n        if addr1 == addr2 {\n            return Err(OrchestratorError::DuplicateContractAddress);\n        }\n        Ok(())\n    }
+    fn validate_two_addresses(
+        env: &Env,
+        addr1: &Address,
+        addr2: &Address,
+    ) -> Result<(), OrchestratorError> {
+        let current = env.current_contract_address();
+        if addr1 == &current || addr2 == &current {
+            return Err(OrchestratorError::SelfReferenceNotAllowed);
+        }
+        if addr1 == addr2 {
+            return Err(OrchestratorError::DuplicateContractAddress);
+        }
+        Ok(())
+    }
 
     fn emit_success_event(env: &Env, caller: &Address, total: i128, allocations: &Vec<i128>, timestamp: u64) {
         env.events().publish((symbol_short!("flow_ok"),), RemittanceFlowEvent {
