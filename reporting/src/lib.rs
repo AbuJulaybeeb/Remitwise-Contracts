@@ -1,7 +1,8 @@
 #![no_std]
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 use soroban_sdk::{
-    contract, contractclient, contractimpl, contracttype, symbol_short, Address, Env, Map, Vec,
+    contract, contractclient, contracterror, contractimpl, contracttype, symbol_short, Address, Env,
+    Map, Vec,
 };
 
 use remitwise_common::Category;
@@ -143,54 +144,18 @@ pub struct ContractAddresses {
     pub family_wallet: Address,
 }
 
-/// Events emitted by the reporting contract
-#[contracttype]
-#[derive(Clone, Copy)]
+/// Errors returned by the reporting contract (`Result` arms and `try_` client helpers).
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum ReportingError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
     Unauthorized = 3,
     AddressesNotConfigured = 4,
     NotAdminProposed = 5,
-}
-
-impl From<ReportingError> for soroban_sdk::Error {
-    fn from(err: ReportingError) -> Self {
-        match err {
-            ReportingError::AlreadyInitialized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-            ReportingError::NotInitialized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::MissingValue,
-            )),
-            ReportingError::Unauthorized => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-            ReportingError::AddressesNotConfigured => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::MissingValue,
-            )),
-            ReportingError::NotAdminProposed => soroban_sdk::Error::from((
-                soroban_sdk::xdr::ScErrorType::Contract,
-                soroban_sdk::xdr::ScErrorCode::InvalidAction,
-            )),
-        }
-    }
-}
-
-impl From<&ReportingError> for soroban_sdk::Error {
-    fn from(err: &ReportingError) -> Self {
-        (*err).into()
-    }
-}
-
-impl From<soroban_sdk::Error> for ReportingError {
-    fn from(_err: soroban_sdk::Error) -> Self {
-        ReportingError::Unauthorized
-    }
+    /// Dependency address set is not usable: duplicates or self-reference to this reporting contract.
+    InvalidDependencyAddressConfiguration = 6,
 }
 
 #[contracttype]
@@ -317,6 +282,66 @@ pub struct ReportingContract;
 
 #[contractimpl]
 impl ReportingContract {
+    // ---------------------------------------------------------------------
+    // Dependency address integrity
+    // ---------------------------------------------------------------------
+
+    /// Validates the five downstream contract addresses before they are persisted or used.
+    ///
+    /// # Security assumptions
+    ///
+    /// - **Self-reference**: No slot may equal [`Env::current_contract_address`]. Routing a role
+    ///   back to this reporting contract would make cross-contract calls ambiguous and can break
+    ///   tooling that assumes unique callees.
+    /// - **Pairwise uniqueness**: Each of `remittance_split`, `savings_goals`, `bill_payments`,
+    ///   `insurance`, and `family_wallet` must refer to a **different** contract ID. Duplicate IDs
+    ///   mean two logical roles silently talk to the same deployment (data integrity / audit risk).
+    /// Complexity: constant time (five slots, fixed number of equality checks).
+    fn validate_dependency_address_set(
+        env: &Env,
+        addrs: &ContractAddresses,
+    ) -> Result<(), ReportingError> {
+        let reporting = env.current_contract_address();
+        let slots = [
+            &addrs.remittance_split,
+            &addrs.savings_goals,
+            &addrs.bill_payments,
+            &addrs.insurance,
+            &addrs.family_wallet,
+        ];
+
+        for slot in slots {
+            if *slot == reporting {
+                return Err(ReportingError::InvalidDependencyAddressConfiguration);
+            }
+        }
+
+        for i in 0..slots.len() {
+            for j in (i + 1)..slots.len() {
+                if *slots[i] == *slots[j] {
+                    return Err(ReportingError::InvalidDependencyAddressConfiguration);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Verify a [`ContractAddresses`] bundle using the same rules as [`ReportingContract::configure_addresses`].
+    ///
+    /// Does **not** write storage and does **not** require authorization. Intended for admin UIs and
+    /// offline checks before submitting a configuration transaction.
+    ///
+    /// # Errors
+    ///
+    /// * [`ReportingError::InvalidDependencyAddressConfiguration`] — duplicates or self-reference.
+    pub fn verify_dependency_address_set(
+        env: Env,
+        addrs: ContractAddresses,
+    ) -> Result<(), ReportingError> {
+        Self::validate_dependency_address_set(&env, &addrs)
+    }
+
     /// Initialize the reporting contract with an admin address.
     ///
     /// This function must be called only once. The provided admin address will
@@ -432,6 +457,8 @@ impl ReportingContract {
     /// # Errors
     /// * `NotInitialized` - If contract has not been initialized
     /// * `Unauthorized` - If caller is not the admin
+    /// * [`ReportingError::InvalidDependencyAddressConfiguration`] - Duplicate addresses or
+    ///   self-reference (this reporting contract used as a dependency).
     ///
     /// # Panics
     /// * If `caller` does not authorize the transaction
@@ -465,6 +492,8 @@ impl ReportingContract {
             insurance,
             family_wallet,
         };
+
+        Self::validate_dependency_address_set(&env, &addresses)?;
 
         env.storage()
             .instance()
