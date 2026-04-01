@@ -60,6 +60,8 @@ pub mod pause_functions {
 }
 
 const STORAGE_UNPAID_TOTALS: Symbol = symbol_short!("UNPD_TOT");
+const MAX_FREQUENCY_DAYS: u32 = 36_500;
+const SECONDS_PER_DAY: u64 = 86_400;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -831,7 +833,7 @@ impl BillPayments {
     }
 
     /// Admin-only: get ALL bills (any owner), paginated.
-    pub fn get_all_bills(
+    pub fn get_all_bills_page(
         env: Env,
         caller: Address,
         cursor: u32,
@@ -947,6 +949,28 @@ impl BillPayments {
         Ok(())
     }
 
+    /// Get all bills (paid and unpaid)
+    ///
+    /// # Returns
+    /// Vec of all Bill structs
+    pub fn get_all_bills(env: Env, caller: Address) -> Result<Vec<Bill>, Error> {
+        caller.require_auth();
+        let admin = Self::get_pause_admin(&env).ok_or(Error::Unauthorized)?;
+        if admin != caller {
+            return Err(Error::Unauthorized);
+        }
+
+        let bills: Map<u32, Bill> = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("BILLS"))
+            .unwrap_or_else(|| Map::new(&env));
+        let mut result = Vec::new(&env);
+        for (_, bill) in bills.iter() {
+            result.push_back(bill);
+        }
+        Ok(result)
+    }
 
     // -----------------------------------------------------------------------
     // Backward-compat helpers
@@ -1170,7 +1194,6 @@ impl BillPayments {
             name: archived_bill.name.clone(),
             external_ref: archived_bill.external_ref.clone(),
             amount: archived_bill.amount,
-            external_ref: None,
             due_date: env.ledger().timestamp() + 2592000,
             recurring: false,
             frequency_days: 0,

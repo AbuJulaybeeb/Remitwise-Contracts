@@ -7,7 +7,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token::TokenClient, vec,
     Address, BytesN, Env, IntoVal, Map, Symbol, Vec,
 };
-use remitwise_common::{EventCategory, EventPriority, RemitwiseEvents};
+use remitwise_common::{clamp_limit, EventCategory, EventPriority, RemitwiseEvents};
 
 // Event topics
 const SPLIT_INITIALIZED: Symbol = symbol_short!("init");
@@ -64,6 +64,21 @@ pub struct AccountGroup {
     pub savings: Address,
     pub bills: Address,
     pub insurance: Address,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct SplitAuthPayload {
+    pub domain_id: Symbol,
+    pub network_id: BytesN<32>,
+    pub contract_addr: Address,
+    pub owner_addr: Address,
+    pub nonce_val: u64,
+    pub usdc_contract: Address,
+    pub spending_percent: u32,
+    pub savings_percent: u32,
+    pub bills_percent: u32,
+    pub insurance_percent: u32,
 }
 
 // Storage TTL constants
@@ -1451,18 +1466,22 @@ impl RemittanceSplit {
             return Err(RemittanceSplitError::InvalidDueDate);
         }
 
-        let next_schedule_id = env
+        let current_max_id = env
             .storage()
             .instance()
             .get(&symbol_short!("NEXT_RSCH"))
             .unwrap_or(0u32);
-            
+
         let next_schedule_id = current_max_id
             .checked_add(1)
             .ok_or(RemittanceSplitError::Overflow)?;
 
         // Explicit uniqueness check to prevent any potential storage collisions
-        if schedules.contains_key(next_schedule_id) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Schedule(next_schedule_id))
+        {
             return Err(RemittanceSplitError::Overflow); // Should be unreachable with monotonic counter
         }
 
@@ -1650,4 +1669,3 @@ impl RemittanceSplit {
         env.storage().persistent().get(&DataKey::Schedule(schedule_id))
     }
 }
-
