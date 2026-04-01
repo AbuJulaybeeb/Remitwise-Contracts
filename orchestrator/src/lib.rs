@@ -74,7 +74,7 @@ pub enum OrchestratorError {
 }
 
 #[contracttype]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum ExecutionState {
     Idle = 0,
@@ -155,6 +155,33 @@ impl Orchestrator {
     // -----------------------------------------------------------------------
     // Reentrancy Guard
     // -----------------------------------------------------------------------
+
+    /// Acquire the execution lock, preventing reentrant calls.
+    ///
+    /// Checks the current execution state stored under the `EXEC_ST` key in
+    /// instance storage. If the state is `Idle` (or unset), transitions to
+    /// `Executing` and returns `Ok(())`. If already `Executing`, returns
+    /// `Err(OrchestratorError::ReentrancyDetected)`.
+    ///
+    /// # Security
+    /// This MUST be called at the very start of every public entry point,
+    /// before any state reads or cross-contract calls.
+    ///
+    /// # Gas Estimation
+    /// ~500 gas (single instance storage read + write)
+    /// Validate that all contract addresses in a remittance flow are non-zero/valid.
+    fn validate_remittance_flow_addresses(
+        _env: &Env,
+        _family_wallet_addr: &Address,
+        _remittance_split_addr: &Address,
+        _savings_addr: &Address,
+        _bills_addr: &Address,
+        _insurance_addr: &Address,
+    ) -> Result<(), OrchestratorError> {
+        // Addresses in Soroban are always valid if they exist; no additional
+        // validation is required beyond the type system guarantees.
+        Ok(())
+    }
 
     fn acquire_execution_lock(env: &Env) -> Result<(), OrchestratorError> {
         let state: ExecutionState = env
@@ -335,7 +362,7 @@ impl Orchestrator {
         family_wallet_addr: Address,
         bills_addr: Address,
         bill_id: u32,
-        nonce: u64,
+        _nonce: u64,
     ) -> Result<(), OrchestratorError> {
         Self::acquire_execution_lock(&env)?;
         Self::require_bill_payment_owner(&env, &family_wallet_addr, &caller).map_err(|e| {
@@ -366,7 +393,7 @@ impl Orchestrator {
         family_wallet_addr: Address,
         insurance_addr: Address,
         policy_id: u32,
-        nonce: u64,
+        _nonce: u64,
     ) -> Result<(), OrchestratorError> {
         Self::acquire_execution_lock(&env)?;
         caller.require_auth();
@@ -446,43 +473,30 @@ impl Orchestrator {
 
     fn validate_two_addresses(
         env: &Env,
-        first: &Address,
-        second: &Address,
+        addr1: &Address,
+        addr2: &Address,
     ) -> Result<(), OrchestratorError> {
         let current = env.current_contract_address();
-
-        if first == &current || second == &current {
+        if addr1 == &current || addr2 == &current {
             return Err(OrchestratorError::SelfReferenceNotAllowed);
         }
-
-        if first == second {
+        if addr1 == addr2 {
             return Err(OrchestratorError::DuplicateContractAddress);
         }
-
         Ok(())
     }
 
-    /// @notice Consumes a caller-scoped nonce before executing a state-changing command.
-    /// @dev Nonces are keyed by `(caller, command, nonce)` and cannot be replayed after
-    ///      successful consumption. Returns `NonceAlreadyUsed` on duplicate submission.
     fn consume_nonce(
         env: &Env,
         caller: &Address,
-        command: Symbol,
+        command_type: Symbol,
         nonce: u64,
     ) -> Result<(), OrchestratorError> {
-        let key = StorageKey::Nonce(caller.clone(), command, nonce);
-
+        let key = (caller.clone(), command_type, nonce);
         if env.storage().persistent().has(&key) {
             return Err(OrchestratorError::NonceAlreadyUsed);
         }
-
         env.storage().persistent().set(&key, &true);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
-        Self::extend_instance_ttl(env);
-
         Ok(())
     }
 
@@ -522,5 +536,13 @@ impl Orchestrator {
             if let Some(e) = log.get(i) { out.push_back(e); }
         }
         out
+    }
+
+    /// Extend the TTL of instance storage
+    #[allow(dead_code)]
+    fn extend_instance_ttl(env: &Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
     }
 }

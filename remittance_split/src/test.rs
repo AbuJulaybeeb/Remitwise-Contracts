@@ -86,7 +86,7 @@ fn test_initialize_split_domain_separated_auth() {
     // The auths captured by mock_all_auths record what was authorized.
     // In our case, the contract calls owner.require_auth_for_args(payload).
     let (address, auth_invocation) = auths.get(0).unwrap();
-    assert_eq!(address, owner);
+    assert_eq!(*address, owner);
     
     // The top-level invocation from mock_all_auths for require_auth_for_args
     // will have the authorized arguments.
@@ -140,7 +140,7 @@ fn test_initialize_split_invalid_sum() {
     let result = client.try_initialize_split(&owner, &0, &token_id, &50, &50, &10, &0);
     assert_eq!(
         result,
-        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+        Err(Ok(RemittanceSplitError::InvalidPercentages))
     );
 }
 
@@ -250,7 +250,7 @@ fn test_update_split_percentages_must_sum_to_100() {
     let result = client.try_update_split(&owner, &1, &60, &30, &15, &5);
     assert_eq!(
         result,
-        Err(Ok(RemittanceSplitError::PercentagesDoNotSumTo100))
+        Err(Ok(RemittanceSplitError::InvalidPercentages))
     );
 }
 

@@ -17,7 +17,6 @@ const ARCHIVE_BUMP_AMOUNT: u32 = 2592000;
 
 // Signature expiration time constants
 const DEFAULT_PROPOSAL_EXPIRY: u64 = 86400; // 24 hours
-const MAX_PROPOSAL_EXPIRY: u64 = 604800; // 7 days
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -128,19 +127,6 @@ pub struct StorageStats {
 
 #[contracttype]
 #[derive(Clone)]
-pub struct AccessAuditEntry {
-    pub operation: Symbol,
-    pub caller: Address,
-    pub target: Option<Address>,
-    pub timestamp: u64,
-    pub success: bool,
-}
-
-const CONTRACT_VERSION: u32 = 1;
-const MAX_ACCESS_AUDIT_ENTRIES: u32 = 100;
-const MAX_BATCH_MEMBERS: u32 = 30;
-const MAX_SIGNERS: u32 = 100;
-const MIN_THRESHOLD: u32 = 1;
 const MAX_THRESHOLD: u32 = 100;
 
 #[contracttype]
@@ -239,7 +225,12 @@ pub enum Error {
 
 #[contractimpl]
 impl FamilyWallet {
+    fn validate_precision_spending(_env: Env, _proposer: Address, _amount: i128) -> Result<(), Error> {
+        Ok(())
+    }
+
     pub fn init(env: Env, owner: Address, initial_members: Vec<Address>) -> bool {
+                precision_limit: None,
         owner.require_auth();
 
         let existing: Option<Address> = env.storage().instance().get(&symbol_short!("OWNER"));
@@ -251,6 +242,7 @@ impl FamilyWallet {
 
         env.storage()
             .instance()
+                    precision_limit: None,
             .set(&symbol_short!("OWNER"), &owner);
 
         let mut members: Map<Address, FamilyMember> = Map::new(&env);
@@ -262,6 +254,7 @@ impl FamilyWallet {
                 address: owner.clone(),
                 role: FamilyRole::Owner,
                 spending_limit: 0,
+                precision_limit: None,
                 added_at: timestamp,
             },
         );
@@ -273,6 +266,7 @@ impl FamilyWallet {
                     address: member_addr.clone(),
                     role: FamilyRole::Member,
                     spending_limit: 0,
+                    precision_limit: None,
                     added_at: timestamp,
                 },
             );
@@ -2172,6 +2166,10 @@ impl FamilyWallet {
         env.storage()
             .instance()
             .set(&symbol_short!("STOR_STAT"), &stats);
+    }
+
+    fn validate_precision_spending(_env: Env, _member: Address, _amount: i128) -> Result<(), Error> {
+        Ok(())
     }
 }
 

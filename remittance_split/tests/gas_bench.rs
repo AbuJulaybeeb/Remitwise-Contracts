@@ -65,7 +65,7 @@ fn bench_distribute_usdc_worst_case() {
     // nonce after initialize_split = 1
     let nonce = 1u64;
     let (cpu, mem, distributed) = measure(&env, || {
-        client.distribute_usdc(&token_addr, &payer, &nonce, &accounts, &amount)
+        client.distribute_usdc(&token_addr, &payer, &nonce, &0, &0, &accounts, &amount)
     });
     assert!(distributed);
 
@@ -93,7 +93,6 @@ fn bench_create_remittance_schedule() {
     });
     
     
-    let schedule_id = result;
     assert_eq!(schedule_id, 1);
 
     println!(
@@ -130,7 +129,6 @@ fn bench_create_multiple_schedules() {
         client.create_remittance_schedule(&owner, &amount, &next_due, &interval)
     });
     
-    let _result = result;
 
     println!(
         r#"{{"contract":"remittance_split","method":"create_remittance_schedule","scenario":"11th_schedule_with_existing","cpu":{},"mem":{}}}"#,
