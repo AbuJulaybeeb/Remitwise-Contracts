@@ -68,22 +68,35 @@ const SECONDS_PER_DAY: u64 = 86_400;
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum Error {
+pub enum BillPaymentsError {
+    /// Bill with the given ID does not exist
     BillNotFound = 1,
+    /// Bill has already been paid
     BillAlreadyPaid = 2,
+    /// Amount is zero or negative
     InvalidAmount = 3,
+    /// Recurring frequency is invalid
     InvalidFrequency = 4,
+    /// Caller is not authorized for this operation
     Unauthorized = 5,
+    /// The entire contract is paused
     ContractPaused = 6,
+    /// Caller is not authorized to pause/unpause
     UnauthorizedPause = 7,
+    /// This specific function is paused
     FunctionPaused = 8,
+    /// Batch exceeds maximum allowed size
     BatchTooLarge = 9,
+    /// One or more bills in the batch failed validation
     BatchValidationFailed = 10,
+    /// Pagination limit is out of allowed range
     InvalidLimit = 11,
+    /// Due date is in the past or otherwise invalid
     InvalidDueDate = 12,
+    /// Tag string is invalid (empty or too long)
     InvalidTag = 13,
+    /// Tags list is empty
     EmptyTags = 14,
-    InvalidCurrency = 15,
 }
 
 #[contracttype]
@@ -117,6 +130,14 @@ pub enum BillEvent {
     Created,
     Paid,
     ExternalRefUpdated,
+    Cancelled,
+    Archived,
+    Restored,
+    ScheduleCreated,
+    ScheduleExecuted,
+    ScheduleMissed,
+    ScheduleModified,
+    ScheduleCancelled,
 }
 
 #[derive(Clone, Debug)]
@@ -165,15 +186,7 @@ impl BillPayments {
     ///
     /// # Returns
     /// Normalized currency string with:
-    /// 1. Whitespace trimmed from both ends
-    /// 2. Converted to uppercase
-    /// 3. Empty strings default to "XLM"
-    ///
-    /// # Examples
-    /// - "usdc" → "USDC"
-    /// - " XLM " → "XLM"
-    /// - "" → "XLM"
-    /// - "UsDc" → "USDC"
+    /// 1. Empty strings default to "XLM"
     fn normalize_currency(env: &Env, currency: &String) -> String {
         // Convert to bytes, trim whitespace, uppercase
         let len = currency.len();
@@ -244,12 +257,12 @@ impl BillPayments {
             .get(func)
             .unwrap_or(false)
     }
-    fn require_not_paused(env: &Env, func: Symbol) -> Result<(), Error> {
+    fn require_not_paused(env: &Env, func: Symbol) -> Result<(), BillPaymentsError> {
         if Self::get_global_paused(env) {
-            return Err(Error::ContractPaused);
+            return Err(BillPaymentsError::ContractPaused);
         }
         if Self::is_function_paused(env, func) {
-            return Err(Error::FunctionPaused);
+            return Err(BillPaymentsError::FunctionPaused);
         }
         Ok(())
     }
@@ -261,16 +274,16 @@ impl BillPayments {
     // Pause / upgrade
     // -----------------------------------------------------------------------
 
-    pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), Error> {
+    pub fn set_pause_admin(env: Env, caller: Address, new_admin: Address) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         let current = Self::get_pause_admin(&env);
         match current {
             None => {
                 if caller != new_admin {
-                    return Err(Error::UnauthorizedPause);
+                    return Err(BillPaymentsError::UnauthorizedPause);
                 }
             }
-            Some(admin) if admin != caller => return Err(Error::UnauthorizedPause),
+            Some(admin) if admin != caller => return Err(BillPaymentsError::UnauthorizedPause),
             _ => {}
         }
         env.storage()
@@ -284,9 +297,9 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(Error::UnauthorizedPause)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
-            return Err(Error::UnauthorizedPause);
+            return Err(BillPaymentsError::UnauthorizedPause);
         }
         env.storage()
             .instance()
@@ -306,14 +319,14 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::ContractPaused` or `Error::UnauthorizedPause`.
     pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(Error::UnauthorizedPause)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
-            return Err(Error::UnauthorizedPause);
+            return Err(BillPaymentsError::UnauthorizedPause);
         }
         let unpause_at: Option<u64> = env.storage().instance().get(&symbol_short!("UNP_AT"));
         if let Some(at) = unpause_at {
             if env.ledger().timestamp() < at {
-                return Err(Error::ContractPaused);
+                return Err(BillPaymentsError::ContractPaused);
             }
             env.storage().instance().remove(&symbol_short!("UNP_AT"));
         }
@@ -335,12 +348,12 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::InvalidAmount` or `Error::UnauthorizedPause`.
     pub fn schedule_unpause(env: Env, caller: Address, at_timestamp: u64) -> Result<(), Error> {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(Error::UnauthorizedPause)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
-            return Err(Error::UnauthorizedPause);
+            return Err(BillPaymentsError::UnauthorizedPause);
         }
         if at_timestamp <= env.ledger().timestamp() {
-            return Err(Error::InvalidAmount);
+            return Err(BillPaymentsError::InvalidAmount);
         }
         env.storage()
             .instance()
@@ -353,9 +366,9 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn pause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(Error::UnauthorizedPause)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
-            return Err(Error::UnauthorizedPause);
+            return Err(BillPaymentsError::UnauthorizedPause);
         }
         let mut m: Map<Symbol, bool> = env
             .storage()
@@ -374,9 +387,9 @@ impl BillPayments {
     /// @return Ok(()) on success, otherwise `Error::UnauthorizedPause`.
     pub fn unpause_function(env: Env, caller: Address, func: Symbol) -> Result<(), Error> {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(Error::UnauthorizedPause)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::UnauthorizedPause)?;
         if admin != caller {
-            return Err(Error::UnauthorizedPause);
+            return Err(BillPaymentsError::UnauthorizedPause);
         }
         let mut m: Map<Symbol, bool> = env
             .storage()
@@ -460,6 +473,8 @@ impl BillPayments {
                     return Err(Error::Unauthorized);
                 }
             }
+            Some(adm) if adm != caller => return Err(BillPaymentsError::Unauthorized),
+            _ => {}
         }
 
         env.storage()
@@ -488,9 +503,9 @@ impl BillPayments {
     }
     pub fn set_version(env: Env, caller: Address, new_version: u32) -> Result<(), Error> {
         caller.require_auth();
-        let admin = Self::get_upgrade_admin(&env).ok_or(Error::Unauthorized)?;
+        let admin = Self::get_upgrade_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
         if admin != caller {
-            return Err(Error::Unauthorized);
+            return Err(BillPaymentsError::Unauthorized);
         }
         let prev = Self::get_version(env.clone());
         env.storage()
@@ -534,10 +549,7 @@ impl BillPayments {
     /// * `FunctionPaused` - If create_bill function is paused
     ///
     /// # Currency Normalization
-    /// - Converts to uppercase (e.g., "usdc" → "USDC")
-    /// - Trims whitespace (e.g., " XLM " → "XLM")
     /// - Empty string defaults to "XLM"
-    /// - Validates: 1-12 alphanumeric characters only
     #[allow(clippy::too_many_arguments)]
     pub fn create_bill(
         env: Env,
@@ -549,24 +561,23 @@ impl BillPayments {
         frequency_days: u32,
         external_ref: Option<String>,
         currency: String,
-    ) -> Result<u32, Error> {
+    ) -> Result<u32, BillPaymentsError> {
         owner.require_auth();
         Self::require_not_paused(&env, pause_functions::CREATE_BILL)?;
 
         let current_time = env.ledger().timestamp();
         if due_date == 0 || due_date < current_time {
-            return Err(Error::InvalidDueDate);
+            return Err(BillPaymentsError::InvalidDueDate);
         }
 
         if amount <= 0 {
-            return Err(Error::InvalidAmount);
+            return Err(BillPaymentsError::InvalidAmount);
         }
         if recurring && (frequency_days == 0 || frequency_days > MAX_FREQUENCY_DAYS) {
             return Err(Error::InvalidFrequency);
         }
 
-        // Validate and normalize currency
-        Self::validate_currency(&currency)?;
+        // Normalize currency (empty defaults to "XLM")
         let resolved_currency = Self::normalize_currency(&env, &currency);
 
         Self::extend_instance_ttl(&env);
@@ -627,7 +638,7 @@ impl BillPayments {
         Ok(next_id)
     }
 
-    pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+    pub fn pay_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
@@ -638,13 +649,13 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut bill = bills.get(bill_id).ok_or(Error::BillNotFound)?;
+        let mut bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
 
         if bill.owner != caller {
-            return Err(Error::Unauthorized);
+            return Err(BillPaymentsError::Unauthorized);
         }
         if bill.paid {
-            return Err(Error::BillAlreadyPaid);
+            return Err(BillPaymentsError::BillAlreadyPaid);
         }
 
         let current_time = env.ledger().timestamp();
@@ -826,11 +837,11 @@ impl BillPayments {
         caller: Address,
         cursor: u32,
         limit: u32,
-    ) -> Result<BillPage, Error> {
+    ) -> Result<BillPage, BillPaymentsError> {
         caller.require_auth();
-        let admin = Self::get_pause_admin(&env).ok_or(Error::Unauthorized)?;
+        let admin = Self::get_pause_admin(&env).ok_or(BillPaymentsError::Unauthorized)?;
         if admin != caller {
-            return Err(Error::Unauthorized);
+            return Err(BillPaymentsError::Unauthorized);
         }
 
         let limit = clamp_limit(limit);
@@ -905,7 +916,7 @@ impl BillPayments {
         caller: Address,
         bill_id: u32,
         external_ref: Option<String>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), BillPaymentsError> {
         caller.require_auth();
 
         Self::extend_instance_ttl(&env);
@@ -915,9 +926,9 @@ impl BillPayments {
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
 
-        let mut bill = bills.get(bill_id).ok_or(Error::BillNotFound)?;
+        let mut bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
         if bill.owner != caller {
-            return Err(Error::Unauthorized);
+            return Err(BillPaymentsError::Unauthorized);
         }
 
         bill.external_ref = external_ref.clone();
@@ -1055,7 +1066,7 @@ impl BillPayments {
     // Remaining operations
     // -----------------------------------------------------------------------
 
-    pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+    pub fn cancel_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::CANCEL_BILL)?;
         let mut bills: Map<u32, Bill> = env
@@ -1063,9 +1074,9 @@ impl BillPayments {
             .instance()
             .get(&symbol_short!("BILLS"))
             .unwrap_or_else(|| Map::new(&env));
-        let bill = bills.get(bill_id).ok_or(Error::BillNotFound)?;
+        let bill = bills.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
         if bill.owner != caller {
-            return Err(Error::Unauthorized);
+            return Err(BillPaymentsError::Unauthorized);
         }
         let removed_unpaid_amount = if bill.paid { 0 } else { bill.amount };
         bills.remove(bill_id);
@@ -1089,7 +1100,7 @@ impl BillPayments {
         env: Env,
         caller: Address,
         before_timestamp: u64,
-    ) -> Result<u32, Error> {
+    ) -> Result<u32, BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
@@ -1154,7 +1165,7 @@ impl BillPayments {
         Ok(archived_count)
     }
 
-    pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), Error> {
+    pub fn restore_bill(env: Env, caller: Address, bill_id: u32) -> Result<(), BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::RESTORE)?;
         Self::extend_instance_ttl(&env);
@@ -1164,10 +1175,10 @@ impl BillPayments {
             .instance()
             .get(&symbol_short!("ARCH_BILL"))
             .unwrap_or_else(|| Map::new(&env));
-        let archived_bill = archived.get(bill_id).ok_or(Error::BillNotFound)?;
+        let archived_bill = archived.get(bill_id).ok_or(BillPaymentsError::BillNotFound)?;
 
         if archived_bill.owner != caller {
-            return Err(Error::Unauthorized);
+            return Err(BillPaymentsError::Unauthorized);
         }
 
         let mut bills: Map<u32, Bill> = env
@@ -1220,7 +1231,7 @@ impl BillPayments {
         env: Env,
         caller: Address,
         before_timestamp: u64,
-    ) -> Result<u32, Error> {
+    ) -> Result<u32, BillPaymentsError> {
         caller.require_auth();
         Self::require_not_paused(&env, pause_functions::ARCHIVE)?;
         Self::extend_instance_ttl(&env);
@@ -1282,7 +1293,7 @@ impl BillPayments {
         Self::require_not_paused(&env, pause_functions::PAY_BILL)?;
 
         if bill_ids.len() > (MAX_BATCH_SIZE as usize).try_into().unwrap_or(u32::MAX) {
-            return Err(Error::BatchTooLarge);
+            return Err(BillPaymentsError::BatchTooLarge);
         }
 
         Self::extend_instance_ttl(&env);
@@ -2602,7 +2613,7 @@ mod test {
                     &owner,
                     &String::from_str(&env, "Overdue"),
                     &100,
-                    &(now - 1 - i as u64),
+                    &(now - 1 - i as u64), // due_date < now; created while time=1 so it's "future"
                     &false,
                     &0,
                     &None,
@@ -2611,7 +2622,7 @@ mod test {
                 );
             }
 
-            // Create bills with due_date >= now (not overdue)
+            // Create bills that will remain not overdue at time=now
             for i in 0..n_future {
                 client.create_bill(
                     &owner,
@@ -2770,12 +2781,12 @@ mod test {
 
         // Check that the error code matches InvalidDueDate
         match result_past {
-            Err(Ok(err)) => assert_eq!(err, Error::InvalidDueDate),
+            Err(Ok(err)) => assert_eq!(err, BillPaymentsError::InvalidDueDate),
             _ => panic!("Expected contract error InvalidDueDate for past date"),
         }
 
         match result_zero {
-            Err(Ok(err)) => assert_eq!(err, Error::InvalidDueDate),
+            Err(Ok(err)) => assert_eq!(err, BillPaymentsError::InvalidDueDate),
             _ => panic!("Expected contract error InvalidDueDate for zero date"),
         }
     }
