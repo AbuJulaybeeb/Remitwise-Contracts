@@ -113,6 +113,88 @@ fn stress_200_policies_single_user() {
     assert!(pages >= 4 && pages <= 5, "Expected 4-5 pages for 200 policies at limit 50, got {}", pages);
 }
 
+/// Contract test for PolicyPage semantics: stable ID ordering, cursor progression,
+/// inactive exclusion, and duplicate-free pagination across pages.
+#[test]
+fn contract_policy_page_ordering_and_cursor_correctness() {
+    let env = stress_env();
+    let contract_id = env.register_contract(None, Insurance);
+    let client = InsuranceClient::new(&env, &contract_id);
+    let owner = Address::generate(&env);
+
+    let name = String::from_str(&env, "ContractPolicy");
+    let coverage_type = String::from_str(&env, "health");
+
+    let mut created_ids = std::vec::Vec::new();
+    for _ in 0..6 {
+        let id = client.create_policy(&owner, &name, &coverage_type, &120i128, &12_000i128);
+        created_ids.push(id);
+    }
+
+    // Make dataset mixed active/inactive.
+    client.deactivate_policy(&owner, &created_ids[1]); // id #2
+    client.deactivate_policy(&owner, &created_ids[4]); // id #5
+
+    let expected_active_ids = std::vec![
+        created_ids[0],
+        created_ids[2],
+        created_ids[3],
+        created_ids[5],
+    ];
+
+    let mut cursor = 0u32;
+    let mut seen_ids = std::vec::Vec::new();
+    let mut ended = false;
+
+    loop {
+        let page = client.get_active_policies(&owner, &cursor, &2u32);
+        assert!(page.count <= 2, "page count must obey the requested limit");
+
+        for policy in page.items.iter() {
+            assert!(policy.active, "inactive policy must never be returned");
+            assert_eq!(policy.owner, owner, "page must be owner-scoped");
+            seen_ids.push(policy.id);
+        }
+
+        if page.next_cursor == 0 {
+            ended = true;
+            break;
+        }
+
+        assert!(page.count > 0, "non-terminal pages must contain at least one item");
+        let last_index = page.count - 1;
+        let last_policy_id = page.items.get(last_index).unwrap().id;
+        assert_eq!(
+            page.next_cursor, last_policy_id,
+            "next_cursor must equal the last returned policy id"
+        );
+        assert!(
+            page.next_cursor > cursor,
+            "next_cursor must advance monotonically between pages"
+        );
+        cursor = page.next_cursor;
+    }
+
+    assert!(ended, "paging must terminate with next_cursor == 0");
+    assert_eq!(
+        seen_ids, expected_active_ids,
+        "active policies must be ordered canonically by ascending policy id"
+    );
+    assert!(
+        !seen_ids.contains(&created_ids[1]) && !seen_ids.contains(&created_ids[4]),
+        "inactive policies must be excluded from all pages"
+    );
+
+    let mut deduped = seen_ids.clone();
+    deduped.sort_unstable();
+    deduped.dedup();
+    assert_eq!(
+        deduped.len(),
+        seen_ids.len(),
+        "policy IDs must not duplicate across paginated responses"
+    );
+}
+
 /// Create 200 policies and verify instance TTL remains valid after the instance
 /// Map grows to 200 entries.
 #[test]

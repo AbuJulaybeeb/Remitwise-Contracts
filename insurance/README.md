@@ -109,16 +109,24 @@ Retrieves a policy by ID.
 
 **Returns:** InsurancePolicy struct or None
 
-#### `get_active_policies(env, owner) -> Vec<InsurancePolicy>`
+#### `get_active_policies(env, owner, cursor, limit) -> PolicyPage`
 
-Gets all active policies for an owner.
+Gets active policies for an owner using cursor pagination.
 
 **Parameters:**
 
 - `owner`: Address of the policy owner
+- `cursor`: Starting policy ID (0 for first page)
+- `limit`: Maximum items per page
 - `env`: Environment
 
-**Returns:** Vector of active InsurancePolicy structs
+**Returns:** `PolicyPage` struct with active items, `count`, and `next_cursor`.
+
+Paging contract semantics:
+- Items are ordered by policy `id` ascending.
+- `next_cursor` is set to the last returned policy ID.
+- `next_cursor = 0` indicates paging is complete.
+- Concatenating all pages until `next_cursor = 0` yields no duplicate policy IDs.
 
 #### `get_all_policies_for_owner(env, owner, cursor, limit) -> PolicyPage`
 
