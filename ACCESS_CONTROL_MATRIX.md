@@ -280,6 +280,7 @@ The orchestrator makes the following cross-contract calls:
 |--------------|-----------------|------------------------|
 | `init` | Admin | Admin must authorize. One-time initialization. |
 | `configure_addresses` | Admin | Admin only. Configures contract addresses. |
+| `check_dependencies` | Admin | Admin only. Returns dependency health statuses. |
 | `get_remittance_summary` | Anyone | No auth. Queries split calculator. |
 | `get_savings_report` | Anyone | No auth. Queries savings goals. |
 | `get_bill_compliance_report` | Anyone | No auth. Queries bill payments. |

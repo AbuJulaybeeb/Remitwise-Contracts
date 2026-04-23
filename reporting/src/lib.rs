@@ -192,6 +192,15 @@ pub struct StorageStats {
     pub last_updated: u64,
 }
 
+/// Dependency health status for monitoring
+#[contracttype]
+#[derive(Clone)]
+pub struct DependencyStatus {
+    pub name: soroban_sdk::String,
+    pub ok: bool,
+    pub error_category: Option<soroban_sdk::String>,
+}
+
 // Client traits for cross-contract calls
 
 #[contractclient(name = "RemittanceSplitClient")]
@@ -217,6 +226,11 @@ pub trait BillPaymentsTrait {
 pub trait InsuranceTrait {
     fn get_active_policies(env: Env, owner: Address, cursor: u32, limit: u32) -> PolicyPage;
     fn get_total_monthly_premium(env: Env, owner: Address) -> i128;
+}
+
+#[contractclient(name = "FamilyWalletClient")]
+pub trait FamilyWalletTrait {
+    fn get_owner(env: Env) -> Address;
 }
 
 // Data structures from other contracts (needed for client traits)
@@ -509,6 +523,106 @@ impl ReportingContract {
         );
 
         Ok(())
+    }
+
+    /// Check health of all configured dependencies (admin only).
+    ///
+    /// Performs minimal try_* calls against each configured contract to verify
+    /// they are responsive and properly configured. Returns a status list for
+    /// monitoring and debugging.
+    ///
+    /// # Arguments
+    /// * `caller` - Address of the administrator (must authorize)
+    ///
+    /// # Returns
+    /// Vec of DependencyStatus for each configured contract
+    ///
+    /// # Errors
+    /// * `NotInitialized` - If contract has not been initialized
+    /// * `Unauthorized` - If caller is not the admin
+    /// * `AddressesNotConfigured` - If dependency addresses have not been configured
+    pub fn check_dependencies(env: Env, caller: Address) -> Result<Vec<DependencyStatus>, ReportingError> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADMIN"))
+            .ok_or(ReportingError::NotInitialized)?;
+
+        if caller != admin {
+            return Err(ReportingError::Unauthorized);
+        }
+
+        let addresses: ContractAddresses = env
+            .storage()
+            .instance()
+            .get(&symbol_short!("ADDRS"))
+            .ok_or(ReportingError::AddressesNotConfigured)?;
+
+        let mut statuses = Vec::new(&env);
+
+        // Check remittance_split
+        let split_client = RemittanceSplitClient::new(&env, &addresses.remittance_split);
+        let split_ok = match split_client.try_get_split() {
+            Ok(Ok(_)) => true,
+            _ => false,
+        };
+        statuses.push_back(DependencyStatus {
+            name: soroban_sdk::String::from_str(&env, "remittance_split"),
+            ok: split_ok,
+            error_category: if split_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_split_failed")) },
+        });
+
+        // Check savings_goals
+        let savings_client = SavingsGoalsClient::new(&env, &addresses.savings_goals);
+        let savings_ok = match savings_client.try_get_all_goals(&Address::from_contract_id(&env, &env.current_contract_address())) {
+            Ok(Ok(_)) => true,
+            _ => false,
+        };
+        statuses.push_back(DependencyStatus {
+            name: soroban_sdk::String::from_str(&env, "savings_goals"),
+            ok: savings_ok,
+            error_category: if savings_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_all_goals_failed")) },
+        });
+
+        // Check bill_payments
+        let bill_client = BillPaymentsClient::new(&env, &addresses.bill_payments);
+        let bill_ok = match bill_client.try_get_total_unpaid(&Address::from_contract_id(&env, &env.current_contract_address())) {
+            Ok(Ok(_)) => true,
+            _ => false,
+        };
+        statuses.push_back(DependencyStatus {
+            name: soroban_sdk::String::from_str(&env, "bill_payments"),
+            ok: bill_ok,
+            error_category: if bill_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_total_unpaid_failed")) },
+        });
+
+        // Check insurance
+        let insurance_client = InsuranceClient::new(&env, &addresses.insurance);
+        let insurance_ok = match insurance_client.try_get_total_monthly_premium(&Address::from_contract_id(&env, &env.current_contract_address())) {
+            Ok(Ok(_)) => true,
+            _ => false,
+        };
+        statuses.push_back(DependencyStatus {
+            name: soroban_sdk::String::from_str(&env, "insurance"),
+            ok: insurance_ok,
+            error_category: if insurance_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_total_monthly_premium_failed")) },
+        });
+
+        // Check family_wallet
+        let family_client = FamilyWalletClient::new(&env, &addresses.family_wallet);
+        let family_ok = match family_client.try_get_owner() {
+            Ok(Ok(_)) => true,
+            _ => false,
+        };
+        statuses.push_back(DependencyStatus {
+            name: soroban_sdk::String::from_str(&env, "family_wallet"),
+            ok: family_ok,
+            error_category: if family_ok { None } else { Some(soroban_sdk::String::from_str(&env, "get_owner_failed")) },
+        });
+
+        Ok(statuses)
     }
 
     /// Generate remittance summary report.
