@@ -158,7 +158,10 @@ fn test_recurring_obligations_flow() {
     // Capture the initial ledger timestamp for use in due-date calculations.
     let timestamp = env.ledger().timestamp();
     // Verify setup_env sets the expected initial ledger timestamp (Requirement 1.5)
-    assert_eq!(timestamp, 1704067200, "setup_env must set ledger timestamp to 1704067200");
+    assert_eq!(
+        timestamp, 1704067200,
+        "setup_env must set ledger timestamp to 1704067200"
+    );
 
     // Register all six contracts in the shared Env instance (Requirement 1.1).
     // env.register_contract(None, ...) assigns a deterministic address and
@@ -209,7 +212,7 @@ fn test_recurring_obligations_flow() {
     let bills_pct: u32 = 40;
     let insurance_pct: u32 = 20;
     let family_pct: u32 = 10; // maps to "spending" bucket in the contract
-    // Sanity check: percentages sum to 100 (Requirement 2.2, 2.3)
+                              // Sanity check: percentages sum to 100 (Requirement 2.2, 2.3)
     assert_eq!(
         family_pct + savings_pct + bills_pct + insurance_pct,
         100,
@@ -244,10 +247,8 @@ fn test_recurring_obligations_flow() {
     // Retrieve the stored config and assert each percentage matches the input
     // (Requirement 8.6: split config round trip).
     // Guaranteed Some: initialize_split just succeeded, so CONFIG is set in storage.
-    let config = remittance_split
-        .get_config()
-        .unwrap(); // guaranteed Some: initialize_split just stored the config
-    // Assert stored percentages match the values passed to initialize_split (Requirement 8.6)
+    let config = remittance_split.get_config().unwrap(); // guaranteed Some: initialize_split just stored the config
+                                                         // Assert stored percentages match the values passed to initialize_split (Requirement 8.6)
     assert_eq!(
         config.spending_percent, family_pct,
         "stored spending_percent must match family_pct input [Req 8.6]"
@@ -276,8 +277,7 @@ fn test_recurring_obligations_flow() {
     // so the sum is always exact.
     let allocation_sum: i128 = allocations.iter().sum();
     assert_eq!(
-        allocation_sum,
-        total_remittance,
+        allocation_sum, total_remittance,
         "sum of all split allocations must equal total_remittance [Req 2.4, 2.5]"
     );
 
@@ -294,7 +294,7 @@ fn test_recurring_obligations_flow() {
         &user,
         &String::from_str(&env, "Electricity"),
         &150i128,
-        &(timestamp + 86400 * 7),  // due in 7 days — guaranteed > current ledger time
+        &(timestamp + 86400 * 7), // due in 7 days — guaranteed > current ledger time
         &true,
         &30u32,
         &None,
@@ -319,18 +319,14 @@ fn test_recurring_obligations_flow() {
 
     // get_bill returns Option<Bill>; guaranteed Some because create_bill just stored
     // the bill with the returned ID in the same contract instance.
-    let bill1 = bill_payments
-        .get_bill(&bill_id_1)
-        .unwrap(); // guaranteed Some: bill was just created with this ID
+    let bill1 = bill_payments.get_bill(&bill_id_1).unwrap(); // guaranteed Some: bill was just created with this ID
     assert!(
         !bill1.paid,
         "bill_id_1 must have paid = false immediately after creation [Req 3.3]"
     );
 
     // get_bill returns Option<Bill>; guaranteed Some for the same reason as bill1.
-    let bill2 = bill_payments
-        .get_bill(&bill_id_2)
-        .unwrap(); // guaranteed Some: bill was just created with this ID
+    let bill2 = bill_payments.get_bill(&bill_id_2).unwrap(); // guaranteed Some: bill was just created with this ID
     assert!(
         !bill2.paid,
         "bill_id_2 must have paid = false immediately after creation [Req 3.3]"
@@ -380,9 +376,7 @@ fn test_recurring_obligations_flow() {
 
     // Assert the policy is retrievable and active immediately after creation (Requirement 4.1, 4.2).
     // Guaranteed Some: create_policy just stored the policy with the returned ID.
-    let policy = insurance
-        .get_policy(&policy_id)
-        .unwrap(); // guaranteed Some: policy was just created with this ID
+    let policy = insurance.get_policy(&policy_id).unwrap(); // guaranteed Some: policy was just created with this ID
     assert!(
         policy.active,
         "newly created policy must have active = true [Req 4.1, 4.2]"
@@ -406,9 +400,7 @@ fn test_recurring_obligations_flow() {
 
     // Assert next_payment_date == ledger_time + 30 * 86400 after paying (Requirement 4.3, 4.4, 8.3).
     // Guaranteed Some: policy still exists (pay_premium does not delete it).
-    let policy_after_pay = insurance
-        .get_policy(&policy_id)
-        .unwrap(); // guaranteed Some: policy still exists after premium payment
+    let policy_after_pay = insurance.get_policy(&policy_id).unwrap(); // guaranteed Some: policy still exists after premium payment
     let expected_next_payment = timestamp + 30 * 86400;
     assert_eq!(
         policy_after_pay.next_payment_date,
@@ -543,9 +535,7 @@ fn test_recurring_obligations_flow() {
     // Assert original bill 1 has paid = true and paid_at == Some(new_timestamp)
     // (Requirements 6.2, 8.2).
     // Guaranteed Some: bill_id_1 still exists in storage (pay_bill does not delete bills).
-    let paid_bill1 = bill_payments
-        .get_bill(&bill_id_1)
-        .unwrap(); // guaranteed Some: pay_bill marks paid but does not remove the bill
+    let paid_bill1 = bill_payments.get_bill(&bill_id_1).unwrap(); // guaranteed Some: pay_bill marks paid but does not remove the bill
     assert!(
         paid_bill1.paid,
         "bill_id_1 must have paid = true after pay_bill [Req 6.2]"
@@ -559,9 +549,7 @@ fn test_recurring_obligations_flow() {
     // Assert original bill 2 has paid = true and paid_at == Some(new_timestamp)
     // (Requirements 6.2, 8.2).
     // Guaranteed Some: same reason as bill_id_1.
-    let paid_bill2 = bill_payments
-        .get_bill(&bill_id_2)
-        .unwrap(); // guaranteed Some: pay_bill marks paid but does not remove the bill
+    let paid_bill2 = bill_payments.get_bill(&bill_id_2).unwrap(); // guaranteed Some: pay_bill marks paid but does not remove the bill
     assert!(
         paid_bill2.paid,
         "bill_id_2 must have paid = true after pay_bill [Req 6.2]"
@@ -619,44 +607,36 @@ fn test_recurring_obligations_flow() {
     // Assert new bills preserve name, amount, frequency_days, and currency from originals
     // (Requirement 6.5).
     assert_eq!(
-        next_bill1.name,
-        bill1.name,
+        next_bill1.name, bill1.name,
         "next-cycle Electricity bill must preserve name [Req 6.5]"
     );
     assert_eq!(
-        next_bill1.amount,
-        bill1.amount,
+        next_bill1.amount, bill1.amount,
         "next-cycle Electricity bill must preserve amount [Req 6.5]"
     );
     assert_eq!(
-        next_bill1.frequency_days,
-        bill1.frequency_days,
+        next_bill1.frequency_days, bill1.frequency_days,
         "next-cycle Electricity bill must preserve frequency_days [Req 6.5]"
     );
     assert_eq!(
-        next_bill1.currency,
-        bill1.currency,
+        next_bill1.currency, bill1.currency,
         "next-cycle Electricity bill must preserve currency [Req 6.5]"
     );
 
     assert_eq!(
-        next_bill2.name,
-        bill2.name,
+        next_bill2.name, bill2.name,
         "next-cycle Internet bill must preserve name [Req 6.5]"
     );
     assert_eq!(
-        next_bill2.amount,
-        bill2.amount,
+        next_bill2.amount, bill2.amount,
         "next-cycle Internet bill must preserve amount [Req 6.5]"
     );
     assert_eq!(
-        next_bill2.frequency_days,
-        bill2.frequency_days,
+        next_bill2.frequency_days, bill2.frequency_days,
         "next-cycle Internet bill must preserve frequency_days [Req 6.5]"
     );
     assert_eq!(
-        next_bill2.currency,
-        bill2.currency,
+        next_bill2.currency, bill2.currency,
         "next-cycle Internet bill must preserve currency [Req 6.5]"
     );
 
@@ -695,12 +675,8 @@ fn test_recurring_obligations_flow() {
     // Guaranteed to succeed: reporting contract is initialized and configured, all
     // dependency contracts are registered and have data, mock_all_auths() bypasses
     // require_auth. The Soroban client panics on Err, satisfying Requirement 8.1.
-    let report = reporting.get_financial_health_report(
-        &user,
-        &total_remittance,
-        &period_start,
-        &period_end,
-    );
+    let report =
+        reporting.get_financial_health_report(&user, &total_remittance, &period_start, &period_end);
 
     // Assert report.bill_compliance.total_bills >= 2 (Requirement 7.1).
     // We created two recurring bills (Electricity and Internet) in Phase 3, and
@@ -758,8 +734,14 @@ fn test_recurring_obligations_flow() {
     println!("==== Financial Health Report Summary ====");
     println!("Health Score       : {}", report.health_score.score);
     println!("Total Savings Goals: {}", report.savings_report.total_goals);
-    println!("Total Bills Tracked: {}", report.bill_compliance.total_bills);
-    println!("Active Policies    : {}", report.insurance_report.active_policies);
+    println!(
+        "Total Bills Tracked: {}",
+        report.bill_compliance.total_bills
+    );
+    println!(
+        "Active Policies    : {}",
+        report.insurance_report.active_policies
+    );
     println!("Total Remittance   : {}", total_remittance);
     println!("=========================================");
 
@@ -780,8 +762,7 @@ fn test_recurring_obligations_flow() {
     // appear under `other_user`).
     let other_unpaid = bill_payments.get_unpaid_bills(&other_user, &0u32, &0u32);
     assert_eq!(
-        other_unpaid.count,
-        0,
+        other_unpaid.count, 0,
         "get_unpaid_bills for a fresh address must return count == 0 [Req 8.5]"
     );
 
@@ -790,8 +771,7 @@ fn test_recurring_obligations_flow() {
     // must not be counted under `other_user`).
     let other_premium = insurance.get_total_monthly_premium(&other_user);
     assert_eq!(
-        other_premium,
-        0,
+        other_premium, 0,
         "get_total_monthly_premium for a fresh address must return 0 [Req 8.5]"
     );
 
