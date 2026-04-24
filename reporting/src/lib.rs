@@ -160,6 +160,8 @@ pub enum ReportingError {
     NotAdminProposed = 5,
     /// Dependency address set is not usable: duplicates or self-reference to this reporting contract.
     InvalidDependencyAddressConfiguration = 6,
+    /// Report period range is invalid (`period_start` is greater than `period_end`).
+    InvalidPeriod = 7,
 }
 
 #[contracttype]
@@ -343,6 +345,14 @@ impl ReportingContract {
             }
         }
 
+        Ok(())
+    }
+
+    /// Validates that a requested report period is logically ordered.
+    fn validate_period(period_start: u64, period_end: u64) -> Result<(), ReportingError> {
+        if period_start > period_end {
+            return Err(ReportingError::InvalidPeriod);
+        }
         Ok(())
     }
 
@@ -666,9 +676,15 @@ impl ReportingContract {
         total_amount: i128,
         period_start: u64,
         period_end: u64,
-    ) -> RemittanceSummary {
+    ) -> Result<RemittanceSummary, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_remittance_summary_internal(&env, total_amount, period_start, period_end)
+        Ok(Self::get_remittance_summary_internal(
+            &env,
+            total_amount,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_remittance_summary_internal(
@@ -745,9 +761,15 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> SavingsReport {
+    ) -> Result<SavingsReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_savings_report_internal(&env, user, period_start, period_end)
+        Ok(Self::get_savings_report_internal(
+            &env,
+            user,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_savings_report_internal(
@@ -803,9 +825,15 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> BillComplianceReport {
+    ) -> Result<BillComplianceReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_bill_compliance_report_internal(&env, user, period_start, period_end)
+        Ok(Self::get_bill_compliance_report_internal(
+            &env,
+            user,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_bill_compliance_report_internal(
@@ -883,9 +911,15 @@ impl ReportingContract {
         user: Address,
         period_start: u64,
         period_end: u64,
-    ) -> InsuranceReport {
+    ) -> Result<InsuranceReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
-        Self::get_insurance_report_internal(&env, user, period_start, period_end)
+        Ok(Self::get_insurance_report_internal(
+            &env,
+            user,
+            period_start,
+            period_end,
+        ))
     }
 
     fn get_insurance_report_internal(
@@ -1008,7 +1042,8 @@ impl ReportingContract {
         total_remittance: i128,
         period_start: u64,
         period_end: u64,
-    ) -> FinancialHealthReport {
+    ) -> Result<FinancialHealthReport, ReportingError> {
+        Self::validate_period(period_start, period_end)?;
         user.require_auth();
         let health_score =
             Self::calculate_health_score_internal(&env, user.clone(), total_remittance);
@@ -1028,14 +1063,14 @@ impl ReportingContract {
             generated_at,
         );
 
-        FinancialHealthReport {
+        Ok(FinancialHealthReport {
             health_score,
             remittance_summary,
             savings_report,
             bill_compliance,
             insurance_report,
             generated_at,
-        }
+        })
     }
 
     /// Generate trend analysis comparing two data points.

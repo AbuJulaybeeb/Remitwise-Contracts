@@ -511,6 +511,18 @@ fn test_get_remittance_summary() {
 }
 
 #[test]
+fn test_get_remittance_summary_rejects_invalid_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_remittance_summary(&user, &10_000i128, &200, &100);
+    assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
+}
+
+#[test]
 fn test_get_remittance_summary_missing_addresses() {
     let env = soroban_sdk::Env::default();
     env.mock_all_auths();
@@ -618,6 +630,18 @@ fn test_get_savings_report() {
 }
 
 #[test]
+fn test_get_savings_report_rejects_invalid_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_savings_report(&user, &200, &100);
+    assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
+}
+
+#[test]
 fn test_get_bill_compliance_report() {
     let env = Env::default();
     env.mock_all_auths();
@@ -653,6 +677,18 @@ fn test_get_bill_compliance_report() {
     // This is expected behavior for the test
     assert_eq!(report.period_start, period_start);
     assert_eq!(report.period_end, period_end);
+}
+
+#[test]
+fn test_get_bill_compliance_report_rejects_invalid_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_bill_compliance_report(&user, &200, &100);
+    assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
 #[test]
@@ -692,6 +728,18 @@ fn test_get_insurance_report() {
     assert_eq!(report.monthly_premium, 200);
     assert_eq!(report.annual_premium, 2400);
     assert_eq!(report.coverage_to_premium_ratio, 2083); // 50000 * 100 / 2400
+}
+
+#[test]
+fn test_get_insurance_report_rejects_invalid_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_insurance_report(&user, &200, &100);
+    assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
 #[test]
@@ -772,6 +820,18 @@ fn test_get_financial_health_report() {
     assert_eq!(report.savings_report.total_goals, 2);
     assert_eq!(report.insurance_report.active_policies, 1);
     assert_eq!(report.generated_at, 1704067200);
+}
+
+#[test]
+fn test_get_financial_health_report_rejects_invalid_period() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, ReportingContract);
+    let client = ReportingContractClient::new(&env, &contract_id);
+    let user = Address::generate(&env);
+
+    let result = client.try_get_financial_health_report(&user, &10_000i128, &200, &100);
+    assert!(matches!(result, Err(Ok(ReportingError::InvalidPeriod))));
 }
 
 #[test]
